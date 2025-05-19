@@ -1,0 +1,88 @@
+{
+  "name": "presto-argento",
+  "version": "1.0.0",
+  "description": "Aplicación de escritorio para gestión de préstamos personales.",
+  "main": "src/main/main.js",
+  "scripts": {
+     "start": "cross-env NODE_ENV=production electron .",
+    "package": "electron-builder",
+    "package:win": "electron-builder --win --x64",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "prestamos",
+    "electron",
+    "sqlite3",
+    "argentina"
+  ],
+  "author": "Tu Nombre/Empresa",
+  "license": "ISC",
+  "dependencies": {
+    "archiver": "^6.0.1",
+    "bcrypt": "^5.1.1",
+    "electron": "^29.1.0",
+    "extract-zip": "^2.0.1",
+    "fs-extra": "^11.2.0",
+    "luxon": "^3.6.1",
+    "papaparse": "^5.4.1",
+    "pdfmake": "^0.2.9",
+    "sqlite3": "^5.1.7"
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3",
+    "electron-builder": "^24.9.1"
+  },
+  "build": {
+    "appId": "com.prestoargento.app",
+    "productName": "Presto Argento",
+    "copyright": "Copyright © 2024 Tu Nombre/Empresa",
+    "directories": {
+      "output": "dist_electron"
+    },
+    "files": [
+      "src/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "node_modules/pdfmake/build/pdfmake/Roboto-Regular.ttf",
+        "to": "pdfmake/Roboto-Regular.ttf"
+      },
+      {
+        "from": "node_modules/pdfmake/build/pdfmake/Roboto-Medium.ttf",
+        "to": "pdfmake/Roboto-Medium.ttf"
+      },
+      {
+        "from": "node_modules/pdfmake/build/pdfmake/Roboto-Italic.ttf",
+        "to": "pdfmake/Roboto-Italic.ttf"
+      },
+      {
+        "from": "node_modules/pdfmake/build/pdfmake/Roboto-MediumItalic.ttf",
+        "to": "pdfmake/Roboto-MediumItalic.ttf"
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "src/renderer/assets/images/logo-presto-argento.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "src/renderer/assets/images/logo-presto-argento.ico",
+      "uninstallerIcon": "src/renderer/assets/images/logo-presto-argento.ico",
+      "shortcutName": "Presto Argento"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "icon": "src/renderer/assets/images/logo-presto-argento.png"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "src/renderer/assets/images/logo-presto-argento.icns"
+    }
+  }
+}

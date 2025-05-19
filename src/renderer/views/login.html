@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: file:; font-src 'self' data:;">
+    <title>Presto Argento - Iniciar Sesión</title>
+    <link rel="stylesheet" href="../assets/css/style.css">
+    <style>
+        /* Estilos específicos para la ventana de login (estilo Windows 11) */
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f0f2f5; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; overflow: hidden; -webkit-app-region: drag; }
+        .login-container { background-color: #ffffff; padding: 40px; border-radius: 8px; box-shadow: var(--box-shadow-base); text-align: center; width: 320px; -webkit-app-region: no-drag; }
+        .logo-container img { width: 100px; margin-bottom: 20px; }
+        .login-container h1 { font-size: 24px; color: #1f1f1f; margin-bottom: 10px; font-weight: 600; }
+        .login-container p { font-size: 14px; color: #555; margin-bottom: 25px; }
+        .input-group { margin-bottom: 20px; text-align: left; }
+        .input-group label { display: block; font-size: 14px; color: #333; margin-bottom: 5px; font-weight: 500; }
+        .input-group input { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: var(--border-radius-base); box-sizing: border-box; font-size: 14px; }
+        .input-group input:focus { border-color: var(--primary-color); outline: none; box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.3); }
+        .login-button { width: 100%; padding: 12px; background-color: var(--primary-color); color: white; border: none; border-radius: var(--border-radius-base); font-size: 16px; cursor: pointer; transition: background-color 0.2s, box-shadow 0.2s; font-weight: 500; }
+        .login-button:hover { background-color: #005a9e; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+        .error-message { color: var(--danger-color); font-size: 13px; margin-top: 10px; height: 15px; }
+        .window-controls { position: fixed; top: 0; right: 0; -webkit-app-region: no-drag; z-index: 9999; }
+        .window-controls button { background: none; border: none; color: #333; padding: 8px 12px; font-size: 14px; cursor: pointer; }
+        .window-controls button:hover { background-color: #e0e0e0; }
+        .window-controls button.close-btn:hover { background-color: var(--danger-color); color: white; }
+    </style>
+</head>
+<body>
+    <div class="window-controls">
+        <button id="close-btn" class="close-btn" title="Cerrar">✕</button>
+    </div>
+    <div class="login-container">
+        <div class="logo-container">
+            <img id="company-logo" src="../assets/images/logo-presto-argento.png" alt="Logo Presto Argento">
+        </div>
+        <h1>Presto Argento</h1>
+        <p>Bienvenido. Ingrese sus credenciales.</p>
+        <form id="login-form">
+            <div class="input-group"><label for="username">Usuario</label><input type="text" id="username" name="username" required></div>
+            <div class="input-group"><label for="password">Contraseña</label><input type="password" id="password" name="password" required></div>
+            <div id="error-message" class="error-message"></div>
+            <button type="submit" class="login-button">Ingresar</button>
+        </form>
+    </div>
+    <script src="../js/loginRenderer.js"></script>
+</body>
+</html>

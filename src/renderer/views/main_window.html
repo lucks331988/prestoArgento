@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: file:; font-src 'self' data:;">
+    <title>Presto Argento - Panel Principal</title>
+    <link rel="stylesheet" href="../assets/css/style.css">
+    <style>
+        /* Estilos de .draggable-area y botones de control de ventana como se definieron antes */
+        .draggable-area { -webkit-app-region: drag; }
+        #logout-button, #exit-button { 
+            display: flex; align-items: center; justify-content: flex-start; gap: 10px;
+            width: calc(100% - 40px); margin: 10px 20px 0 20px; padding: 10px 15px;
+            background-color: var(--danger-color); color: white; border: none;
+            border-radius: var(--border-radius-base); cursor: pointer; font-weight: 500;
+            text-align: left; transition: background-color 0.2s;
+        }
+        #logout-button:hover, #exit-button:hover { background-color: #c82333; }
+        #logout-button i, #exit-button i { font-style: normal; }
+
+        .window-custom-controls-top {
+            position: fixed; top: 0; left: 0; width: 100%; height: 32px;
+            display: flex; justify-content: flex-end; align-items: center;
+            -webkit-app-region: drag; background-color: transparent;
+            z-index: 9999; padding-right: 5px;
+        }
+        .window-custom-controls-top button {
+            background: none; border: none; color: var(--text-color-light-theme); 
+            padding: 0 12px; font-size: 14px; 
+            font-family: 'Segoe MDL2 Assets', 'Symbols'; /* Para símbolos de ventana */
+            cursor: pointer; height: 100%; -webkit-app-region: no-drag;
+            transition: background-color 0.2s;
+        }
+        body.dark-theme .window-custom-controls-top button { color: var(--text-color-dark-theme); }
+        .window-custom-controls-top button:hover { background-color: rgba(0,0,0,0.1); }
+        body.dark-theme .window-custom-controls-top button:hover { background-color: rgba(255,255,255,0.1); }
+        .window-custom-controls-top button.custom-close-btn-top:hover { background-color: var(--danger-color); color: white; }
+        
+        input[type="number"]::-webkit-outer-spin-button,
+        input[type="number"]::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0; /* También es bueno resetear el margen que a veces añaden */
+        }
+        input[type="number"] {
+        -moz-appearance: textfield; /* Firefox usa esto para quitar el estilo de "spinner" */
+        }
+        input[type="number"] {
+            padding: 10px 12px;
+            border: 1px solid var(--border-color-light-theme);
+            border-radius: var(--border-radius-base);
+            box-sizing: border-box;
+            font-size: 0.95em;
+            background-color: var(--content-bg-light-theme);
+            color: var(--text-color-light-theme);
+        }
+        body.dark-theme input[type="number"] {
+            background-color: #2d2d30;
+            color: var(--text-color-dark-theme);
+            border-color: #555;
+        }
+    </style>
+</head>
+<body class="light-theme"> 
+    <div class="window-custom-controls-top"> 
+        <div style="margin-left: auto; display: flex; height:100%;"> 
+            <button id="custom-minimize-btn" title="Minimizar"></button>
+            <button id="custom-maximize-btn" title="Maximizar"></button>
+            <button id="custom-close-btn-top" class="custom-close-btn-top" title="Cerrar"></button>
+        </div>
+    </div>
+
+    <div class="sidebar draggable-area"> 
+        <div class="sidebar-header" style="-webkit-app-region: no-drag;">
+            <img id="app-logo-sidebar" src="../assets/images/logo-presto-argento.png" alt="Logo Presto Argento">
+            <h2 id="app-title-sidebar">Presto Argento</h2>
+        </div>
+        <nav class="sidebar-menu" style="-webkit-app-region: no-drag;">
+            <ul>
+                <li><a href="#" data-page="dashboard" class="active"><i>🏠</i> Dashboard</a></li>
+                <li><a href="#" data-page="clients"><i>👥</i> Clientes</a></li>
+                <li><a href="#" data-page="loans"><i>💰</i> Préstamos</a></li>
+                <li><a href="#" data-page="payments"><i>💳</i> Pagos y Cobranzas</a></li>
+                <li><a href="#" data-page="simulator"><i>🧮</i> Simulador</a></li>
+                <li><a href="#" data-page="reports"><i>📊</i> Reportes</a></li>
+                <li><a href="#" data-page="settings"><i>⚙️</i> Configuración</a></li>
+            </ul>
+        </nav>
+        <div class="sidebar-footer" style="-webkit-app-region: no-drag;">
+            <button id="theme-toggle-btn">Cambiar Tema</button>
+            <p id="user-info">Usuario: Cargando...</p>
+            <button id="logout-button"><i>↪️</i> Cerrar Sesión</button>
+        </div>
+    </div>
+
+    <div class="main-content" style="padding-top: 42px;"> 
+        <!-- Contenido de las páginas (Dashboard) -->
+        <div id="dashboard-page" class="page active" style="-webkit-app-region: no-drag;">
+            <div class="content-header"><h1>Dashboard</h1></div>
+            <p>Bienvenido a Presto Argento. Seleccione una opción del menú.</p>
+            <div id="dashboard-summary-output" style="margin-top: 20px; background-color: var(--content-bg-light-theme); padding:20px; border-radius:var(--border-radius-base); box-shadow: var(--box-shadow-base);">
+                <h4>Resumen Rápido del Negocio:</h4>
+                <p><strong>Préstamos Activos:</strong> <span id="dash-summary-active-count">-</span> (Capital Pendiente: <span id="dash-summary-active-capital">-</span>)</p>
+                <p><strong>Total Pagos Hoy:</strong> <span id="dash-summary-payments-today">-</span> (Monto: <span id="dash-summary-payments-today-amount">-</span>)</p>
+                <p><strong>Cuotas Venciendo Próximos 7 días:</strong> <span id="dash-summary-installments-due-week">-</span></p>
+            </div>
+        </div>
+        
+        <!-- Contenido de Gestión de Clientes -->
+        <div id="clients-page" class="page" style="-webkit-app-region: no-drag;">
+            <div class="content-header">
+                <h1>Gestión de Clientes</h1>
+                <button id="btn-show-add-client-modal" class="btn btn-primary"><i>➕</i> Nuevo Cliente</button>
+            </div>
+            <div class="filters-bar">
+                <input type="text" id="search-client-input" placeholder="Buscar por Nombre, Apellido o DNI...">
+                <label for="show-inactive-clients-checkbox"><input type="checkbox" id="show-inactive-clients-checkbox"> Mostrar Inactivos</label>
+            </div>
+            <div class="table-container clients-list-container">
+                <table id="clients-table" class="simple-table">
+                    <thead><tr><th>Nombre</th><th>Apellido</th><th>DNI</th><th>Teléfono</th><th>Estado</th><th>Acciones</th></tr></thead>
+                    <tbody id="clients-table-body"></tbody>
+                </table>
+                <p id="no-clients-message" style="display: none; text-align: center; margin-top: 20px;">No hay clientes.</p>
+            </div>
+            <div id="client-modal" class="modal">
+                <div class="modal-content">
+                    <div class="modal-header"><h2 id="client-modal-title"></h2><span class="close-button" id="client-modal-close-btn">×</span></div>
+                    <div class="modal-body">
+                        <form id="client-form">
+                            <input type="hidden" id="client-id-input">
+                            <div class="form-grid">
+                                <div class="form-group"><label for="client-first-name">Nombres (*)</label><input type="text" id="client-first-name" required></div>
+                                <div class="form-group"><label for="client-last-name">Apellidos (*)</label><input type="text" id="client-last-name" required></div>
+                                <div class="form-group"><label for="client-dni">DNI (*)</label><input type="text" id="client-dni" required pattern="\d{7,8}" title="DNI: 7-8 dígitos"></div>
+                                <div class="form-group"><label for="client-phone">Teléfono (*)</label><input type="tel" id="client-phone" required></div>
+                                <div class="form-group full-width"><label for="client-address">Dirección (*)</label><input type="text" id="client-address" required></div>
+                                <div class="form-group"><label for="client-occupation">Ocupación</label><input type="text" id="client-occupation"></div>
+                                <div class="form-group"><label for="client-email">Email</label><input type="email" id="client-email"></div>
+                                <div class="form-group full-width"><label for="client-notes">Notas</label><textarea id="client-notes" rows="3"></textarea></div>
+                            </div>
+                            <div id="client-form-error-message" class="error-message"></div>
+                            <div class="modal-footer">
+                                <button type="button" id="btn-cancel-client-form" class="btn btn-secondary">Cancelar</button>
+                                <button type="submit" id="btn-save-client-form" class="btn btn-primary">Guardar</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            <div id="client-details-modal" class="modal">
+                <div class="modal-content large">
+                    <div class="modal-header"><h2 id="client-details-modal-title">Ficha del Cliente</h2><span class="close-button" id="client-details-modal-close-btn">×</span></div>
+                    <div class="modal-body">
+                        <div id="client-details-content" style="margin-bottom:20px;"></div><hr>
+                        <h3>Documentación</h3>
+                        <div id="client-documents-section">
+                            <div class="document-upload-area">
+                                <h4>Subir Nuevo Documento:</h4>
+                                <select id="client-document-type-select">
+                                    <option value="dni_front">DNI (Frente)</option><option value="dni_back">DNI (Dorso)</option>
+                                    <option value="salary_slip">Recibo Sueldo</option><option value="guarantor_dni_front">DNI Garante (Frente)</option>
+                                    <option value="guarantor_dni_back">DNI Garante (Dorso)</option><option value="guarantor_salary_slip">Recibo Sueldo Garante</option>
+                                    <option value="other">Otro</option>
+                                </select>
+                                <button id="btn-upload-client-document" class="btn btn-sm btn-success"><i>📤</i> Subir</button>
+                                <div id="upload-status-message" class="status-message"></div>
+                            </div>
+                            <div id="client-documents-list" class="documents-grid"></div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                         <button type="button" id="btn-edit-client-from-details" class="btn btn-secondary">Editar Cliente</button>
+                         <button type="button" id="btn-close-client-details" class="btn btn-primary">Cerrar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Contenido de Gestión de Préstamos -->
+        <div id="loans-page" class="page" style="-webkit-app-region: no-drag;">
+            <div class="content-header">
+                <h1>Gestión de Préstamos</h1>
+                <button id="btn-show-add-loan-modal" class="btn btn-primary"><i>➕</i> Nuevo Préstamo</button>
+            </div>
+            <div class="filters-bar">
+                <input type="text" id="search-loan-client-dni" placeholder="DNI Cliente...">
+                <select id="filter-loan-type"><option value="">Tipo (Todos)</option><option value="daily">Diario</option><option value="monthly">Mensual</option></select>
+                <select id="filter-loan-status"><option value="">Estado (Todos)</option><option value="active">Activo</option><option value="paid">Pagado</option><option value="overdue">Vencido</option><option value="defaulted">En Mora</option><option value="cancelled">Anulado</option></select>
+                <button id="btn-apply-loan-filters" class="btn btn-sm btn-info"><i>🔍</i> Filtrar</button>
+                <button id="btn-clear-loan-filters" class="btn btn-sm btn-secondary">Limpiar</button>
+            </div>
+            <div class="table-container loans-list-container">
+                <table id="loans-table" class="simple-table">
+                    <thead><tr><th>ID</th><th>Cliente (DNI)</th><th>Tipo</th><th>Capital</th><th>Total</th><th>Cuotas</th><th>Inicio</th><th>Estado</th><th>Acciones</th></tr></thead>
+                    <tbody id="loans-table-body"></tbody>
+                </table>
+                <p id="no-loans-message" style="display: none; text-align: center; margin-top: 20px;">No hay préstamos.</p>
+            </div>
+            <div id="loan-modal" class="modal">
+                <div class="modal-content large">
+                    <div class="modal-header"><h2 id="loan-modal-title">Nuevo Préstamo</h2><span class="close-button" id="loan-modal-close-btn">×</span></div>
+                    <div class="modal-body" style="display: flex; gap: 20px;">
+                        <form id="loan-form" style="flex: 2;">
+                            <h4>Datos del Préstamo</h4>
+                            <div class="form-grid">
+                                <div class="form-group"><label for="loan-client-select">Cliente (*)</label><select id="loan-client-select" required></select><small>Si el cliente no está, <a href="#" id="link-to-clients-page">agréguelo aquí</a>.</small></div>
+                                <div class="form-group"><label for="loan-type-select">Tipo (*)</label><select id="loan-type-select" required><option value="daily">Diario</option><option value="monthly">Mensual</option></select></div>
+                                <div class="form-group"><label for="loan-principal-amount">Monto Capital (*)</label><input type="number" id="loan-principal-amount" step="0.01" min="1" required></div>
+                                <div class="form-group"><label for="loan-interest-rate">Tasa Interés Efectiva (%) (*)</label><input type="number" id="loan-interest-rate" step="0.01" min="0" required><small id="loan-interest-rate-hint"></small></div>
+                                <div class="form-group"><label for="loan-term-duration">Plazo (*)</label><input type="number" id="loan-term-duration" min="1" required><small id="loan-term-duration-hint"></small></div>
+                                <div class="form-group"><label for="loan-start-date">Fecha Otorgamiento (*)</label><input type="date" id="loan-start-date" required></div>
+                                <div class="form-group" id="loan-fixed-installment-group" style="display:none;"><label for="loan-fixed-installment-amount">Monto Cuota Fija (Opcional Prést. Diario)</label><input type="number" id="loan-fixed-installment-amount" step="0.01" min="1"></div>
+                            </div>
+                            <h4>Datos del Garante (Opcional)</h4>
+                            <div class="form-grid">
+                                 <div class="form-group"><label for="loan-guarantor-first-name">Nombres</label><input type="text" id="loan-guarantor-first-name"></div>
+                                 <div class="form-group"><label for="loan-guarantor-last-name">Apellidos</label><input type="text" id="loan-guarantor-last-name"></div>
+                                 <div class="form-group"><label for="loan-guarantor-dni">DNI</label><input type="text" id="loan-guarantor-dni"></div>
+                                 <div class="form-group"><label for="loan-guarantor-phone">Teléfono</label><input type="tel" id="loan-guarantor-phone"></div>
+                                 <div class="form-group full-width"><label for="loan-guarantor-address">Dirección</label><input type="text" id="loan-guarantor-address"></div>
+                            </div>
+                             <div class="form-group full-width"><label for="loan-notes">Notas Préstamo</label><textarea id="loan-notes" rows="2"></textarea></div>
+                            <div id="loan-form-error-message" class="error-message"></div>
+                        </form>
+                        <div id="loan-preview-section" style="flex: 1; border-left: 1px solid var(--border-color-light-theme); padding-left: 20px;">
+                            <h4>Previsualización</h4>
+                            <button type="button" id="btn-preview-loan-installments" class="btn btn-sm btn-info"><i>📊</i> Calcular Cuotas</button>
+                            <div id="loan-installments-preview-table-container" style="margin-top: 10px; max-height: 280px; overflow-y: auto;">
+                                <table class="simple-table"><thead><tr><th>N°</th><th>Vence</th><th>Monto</th></tr></thead><tbody id="loan-installments-preview-tbody"></tbody></table>
+                            </div>
+                            <div id="loan-summary-preview" style="margin-top:10px; font-weight: bold;">
+                                <p>Total Interés: <span id="preview-total-interest">-</span></p><p>Total a Pagar: <span id="preview-total-amount-due">-</span></p>
+                                <p>Cuota Base: <span id="preview-installment-amount">-</span></p><p>N° Cuotas: <span id="preview-num-installments">-</span></p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" id="btn-cancel-loan-form" class="btn btn-secondary">Cancelar</button>
+                        <button type="submit" form="loan-form" id="btn-save-loan-form" class="btn btn-primary">Registrar Préstamo</button>
+                    </div>
+                </div>
+            </div>
+             <div id="loan-details-modal" class="modal">
+                <div class="modal-content large">
+                     <div class="modal-header"><h2 id="loan-details-modal-title"></h2><span class="close-button" id="loan-details-modal-close-btn">×</span></div>
+                     <div class="modal-body">
+                         <div id="loan-details-info-section" style="margin-bottom:20px;"></div> <hr>
+                         <h4>Plan de Pagos</h4>
+                         <div id="loan-details-installments-table-container" style="max-height: 300px; overflow-y: auto;">
+                             <table class="simple-table">
+                                 <thead><tr><th>N°</th><th>Vence</th><th>Monto Deb.</th><th>Pagado</th><th>Mora</th><th>Estado</th><th>Fecha Pago</th></tr></thead>
+                                 <tbody id="loan-details-installments-tbody"></tbody>
+                             </table>
+                         </div>
+                         <div id="loan-details-actions" style="margin-top: 20px; display:flex; gap:10px; align-items:center;">
+                             <label for="loan-details-change-status-select" style="margin-right:5px;">Cambiar Estado:</label>
+                             <select id="loan-details-change-status-select" style="padding: 5px; flex-grow:1;">
+                                <option value="active">Activo</option><option value="overdue">Vencido</option>
+                                <option value="defaulted">En Mora</option><option value="cancelled">Anulado</option>
+                            </select>
+                            <button id="btn-loan-details-change-status" class="btn btn-sm btn-warning">Aplicar</button>
+                            <button id="btn-generate-loan-contract" class="btn btn-sm btn-primary"><i>📄</i> Generar Contrato</button>
+                         </div>
+                     </div>
+                     <div class="modal-footer"><button type="button" id="btn-close-loan-details-modal" class="btn btn-primary">Cerrar</button></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Contenido de Pagos y Cobranzas -->
+        <div id="payments-page" class="page" style="-webkit-app-region: no-drag;">
+            <div class="content-header"><h1>Pagos y Cobranzas</h1></div>
+            <div class="payments-container">
+                <div class="payment-search-section">
+                    <h3>Buscar Préstamos/Cuotas para Cobranza</h3>
+                    <div class="form-inline-group">
+                        <div class="form-group"><label for="payment-search-client-dni">DNI Cliente</label><input type="text" id="payment-search-client-dni" placeholder="DNI del Cliente..."></div>
+                        <div class="form-group"><label for="payment-search-loan-id">ID Préstamo (Opc.)</label><input type="number" id="payment-search-loan-id" placeholder="ID Préstamo..."></div>
+                        <button id="btn-payment-search-loans" class="btn btn-primary"><i>🔍</i> Buscar</button>
+                    </div>
+                    <div id="payment-search-results" style="margin-top: 20px;">
+                         <p id="no-pending-installments-message" style="text-align:center; display:none;">No se encontraron cuotas pendientes.</p>
+                         <div id="pending-installments-list"></div>
+                    </div>
+                </div>
+                <div class="payment-history-section" style="margin-top: 30px;">
+                     <h3>Historial de Pagos Recientes</h3>
+                     <div class="form-inline-group">
+                        <div class="form-group"><label for="payment-history-date-from">Desde</label><input type="date" id="payment-history-date-from"></div>
+                        <div class="form-group"><label for="payment-history-date-to">Hasta</label><input type="date" id="payment-history-date-to"></div>
+                        <button id="btn-filter-payment-history" class="btn btn-sm btn-info"><i>🔍</i> Filtrar</button>
+                     </div>
+                     <div id="payment-history-table-container" class="table-container" style="margin-top:15px;">
+                        <table id="payment-history-table" class="simple-table">
+                            <thead><tr><th>ID Pago</th><th>Fecha</th><th>Cliente (DNI)</th><th>Prést.ID</th><th>Cuota N°</th><th>Monto</th><th>Registró</th><th>Recibo</th></tr></thead>
+                            <tbody id="payment-history-tbody"></tbody>
+                        </table>
+                     </div>
+                </div>
+            </div>
+            <div id="record-payment-modal" class="modal">
+                <div class="modal-content">
+                    <div class="modal-header"><h2 id="record-payment-modal-title">Registrar Pago</h2><span class="close-button" id="record-payment-modal-close-btn">×</span></div>
+                    <div class="modal-body">
+                        <form id="record-payment-form">
+                            <input type="hidden" id="payment-loan-installment-id">
+                            <p><strong>Cliente:</strong> <span id="payment-modal-client-name"></span></p>
+                            <p><strong>Préstamo N°:</strong> <span id="payment-modal-loan-id"></span> - <strong>Cuota N°:</strong> <span id="payment-modal-installment-number"></span></p>
+                            <p><strong>Vence:</strong> <span id="payment-modal-due-date"></span></p>
+                            <p><strong>Monto Cuota:</strong> <span id="payment-modal-amount-due"></span></p>
+                            <p><strong>Saldo Pendiente:</strong> <span id="payment-modal-remaining-balance"></span></p>
+                            <div id="payment-modal-arrears-section" style="background-color: #fff3cd; border: 1px solid #ffeeba; padding: 10px; margin-bottom:10px; border-radius:var(--border-radius-base); display:none;">
+                                <p><strong>Mora Calculada:</strong> <span id="payment-modal-arrears-amount"></span> (<span id="payment-modal-days-overdue"></span> días)</p>
+                                <small>Tasa mora diaria aplicada: <span id="payment-modal-arrears-rate-info"></span>%.</small>
+                            </div>
+                            <div class="form-group"><label for="payment-amount">Monto a Pagar (*)</label><input type="number" id="payment-amount" step="0.01" min="0.01" required></div>
+                            <div class="form-group"><label for="payment-date">Fecha de Pago (*)</label><input type="datetime-local" id="payment-date" required></div>
+                            <div class="form-group"><label for="payment-method">Método</label><select id="payment-method"><option value="cash">Efectivo</option><option value="transfer">Transferencia</option><option value="debit_card">Débito</option><option value="other">Otro</option></select></div>
+                            <div class="form-group"><label for="payment-notes">Notas</label><textarea id="payment-notes" rows="2"></textarea></div>
+                            <div id="record-payment-form-error-message" class="error-message"></div>
+                        </form>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" id="btn-cancel-record-payment" class="btn btn-secondary">Cancelar</button>
+                        <button type="submit" form="record-payment-form" id="btn-save-payment" class="btn btn-primary">Registrar Pago</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Contenido del Simulador de Préstamos -->
+        <div id="simulator-page" class="page" style="-webkit-app-region: no-drag;">
+            <div class="content-header"><h1>Simulador de Préstamos</h1></div>
+            <div class="simulator-container">
+                <div class="simulator-form-section">
+                    <h3>Ingresar Datos para Simulación</h3>
+                    <form id="loan-simulator-form">
+                        <div class="form-group"><label for="sim-loan-type">Tipo (*)</label><select id="sim-loan-type" required><option value="monthly" selected>Mensual</option><option value="daily">Diario</option></select></div>
+                        <div class="form-group"><label for="sim-principal-amount">Monto Capital (*)</label><input type="number" id="sim-principal-amount" step="0.01" min="1" required placeholder="Ej: 10000"></div>
+                        <div class="form-group"><label for="sim-interest-rate">Tasa Interés Efectiva (%) (*)</label><input type="number" id="sim-interest-rate" step="0.01" min="0" required placeholder="Ej: 5"><small id="sim-interest-rate-hint"></small></div>
+                        <div class="form-group"><label for="sim-term-duration">Plazo (*)</label><input type="number" id="sim-term-duration" min="1" required placeholder="Ej: 6"><small id="sim-term-duration-hint"></small></div>
+                        <div class="form-group"><label for="sim-start-date">Fecha Inicio Estimada (*)</label><input type="date" id="sim-start-date" required></div>
+                        <div class="form-group" id="sim-fixed-installment-group" style="display:none;"><label for="sim-fixed-installment-amount">Monto Cuota Fija (Opcional)</label><input type="number" id="sim-fixed-installment-amount" step="0.01" min="1" placeholder="Ej: 100"></div>
+                        <button type="submit" class="btn btn-primary btn-block"><i>🧮</i> Simular Préstamo</button>
+                    </form>
+                </div>
+                <div class="simulator-results-section">
+                    <h3>Resultados de la Simulación</h3>
+                    <div id="simulator-summary">
+                        <p><strong>Monto Solicitado:</strong> <span id="sim-res-principal">-</span></p><p><strong>Interés Total:</strong> <span id="sim-res-total-interest">-</span></p>
+                        <p><strong>Monto Total a Devolver:</strong> <span id="sim-res-total-amount-due">-</span></p><p><strong>N° Cuotas:</strong> <span id="sim-res-num-installments">-</span></p>
+                        <p><strong>Cuota Base:</strong> <span id="sim-res-installment-amount">-</span></p><p><strong>Primer Vencimiento:</strong> <span id="sim-res-first-due-date">-</span></p>
+                        <p><strong>Último Vencimiento:</strong> <span id="sim-res-last-due-date">-</span></p>
+                    </div><hr>
+                    <h4>Plan de Pagos Estimado:</h4>
+                    <div id="simulator-installments-table-container" class="table-container" style="padding:0;">
+                        <table class="simple-table"><thead><tr><th>N°</th><th>Vence</th><th>Monto</th></tr></thead><tbody id="simulator-installments-tbody"></tbody></table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Contenido de Reportes -->
+        <div id="reports-page" class="page" style="-webkit-app-region: no-drag;">
+            <div class="content-header"><h1>Reportes y Estadísticas</h1></div>
+            <div class="reports-container">
+                <div class="report-controls-section">
+                    <h3>Seleccionar Reporte y Filtros</h3>
+                    <div class="form-group"><label for="report-type-select">Tipo de Reporte:</label><select id="report-type-select"><option value="summary">Resumen General</option><option value="loans">Préstamos</option><option value="payments">Cobranzas</option></select></div>
+                    <div id="report-filters-area"></div>
+                    <button id="btn-generate-report" class="btn btn-primary" style="margin-top:15px;"><i>🔄</i> Generar / Actualizar</button>
+                </div>
+                <div class="report-output-section">
+                    <h3>Vista Previa / Resumen</h3>
+                    <div id="report-summary-output" style="display:none; margin-bottom: 20px; background-color: var(--content-bg-light-theme); padding:20px; border-radius:var(--border-radius-base); box-shadow: var(--box-shadow-base);">
+                        <h4>Resumen General:</h4>
+                        <p><strong>Préstamos Activos:</strong> <span id="summary-active-count">-</span> (Capital Pendiente: <span id="summary-active-capital">-</span>)</p>
+                        <p><strong>Préstamos Pagados:</strong> <span id="summary-paid-count">-</span> (Capital Pagado: <span id="summary-paid-capital">-</span>)</p>
+                        <p><strong>Préstamos Vencidos/Mora:</strong> <span id="summary-overdue-count">-</span> (Capital: <span id="summary-overdue-capital">-</span>)</p>
+                        <p><strong>Total Capital Prestado (Período):</strong> <span id="summary-total-capital-given">-</span></p>
+                        <p><strong>Total Intereses Teóricos (Período):</strong> <span id="summary-total-interest-theoretical">-</span></p>
+                    </div>
+                    <div id="report-table-output" style="display:none;">
+                        <div style="margin-bottom: 10px; text-align: right;">
+                            <button id="btn-export-pdf" class="btn btn-sm btn-secondary"><i>📄</i> PDF</button>
+                            <button id="btn-export-csv" class="btn btn-sm btn-secondary" style="margin-left: 5px;"><i>📈</i> CSV/Excel</button>
+                        </div>
+                        <div id="report-table-container" class="table-container"><table id="report-data-table" class="simple-table"><thead></thead><tbody id="report-data-tbody"></tbody></table></div>
+                         <p id="no-report-data-message" style="text-align:center; display:none;">No hay datos.</p>
+                    </div>
+                    <div id="report-status-message" class="status-message" style="margin-top:10px;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Contenido de Configuración -->
+        <div id="settings-page" class="page" style="-webkit-app-region: no-drag;">
+            <div class="content-header"><h1>Configuración General</h1></div>
+            <div class="settings-sections-container" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 25px;">
+                <div class="settings-section">
+                    <h3>Información de la Empresa</h3>
+                    <form id="company-info-form">
+                        <div class="form-group"><label for="company-name">Nombre Empresa (*)</label><input type="text" id="company-name" required></div>
+                        <div class="form-group"><label for="company-address">Dirección</label><input type="text" id="company-address"></div>
+                        <div class="form-group"><label for="company-phone">Teléfono</label><input type="tel" id="company-phone"></div>
+                        <div class="form-group"><label for="company-cuit">CUIT</label><input type="text" id="company-cuit"></div>
+                        <div class="form-group"><label>Logo Actual:</label><img id="current-company-logo-preview" src="../assets/images/logo-presto-argento.png" alt="Logo" style="max-width: 150px; max-height: 100px; border: 1px solid var(--border-color-light-theme); margin-top: 5px; display:block; border-radius:var(--border-radius-base);"><button type="button" id="btn-change-logo" class="btn btn-sm btn-secondary" style="margin-top: 10px;">Cambiar Logo</button></div>
+                        <div id="company-info-message" class="status-message"></div>
+                        <button type="submit" class="btn btn-primary">Guardar Info Empresa</button>
+                    </form>
+                </div>
+                <div class="settings-section">
+                    <h3>Tasas de Interés Predeterminadas</h3>
+                    <form id="interest-rates-form">
+                        <div class="form-group"><label for="daily-interest-rate">Interés Diario (%)</label><input type="number" id="daily-interest-rate" step="0.01" min="0"></div>
+                        <div class="form-group"><label for="monthly-interest-rate">Interés Mensual (%)</label><input type="number" id="monthly-interest-rate" step="0.01" min="0"></div>
+                        <div id="interest-rates-message" class="status-message"></div>
+                        <button type="submit" class="btn btn-primary">Guardar Tasas</button>
+                    </form>
+                </div>
+                <div class="settings-section" id="change-password-section">
+                    <h3>Cambiar Mi Contraseña</h3>
+                    <form id="change-password-form">
+                        <div class="form-group"><label for="current-password">Contraseña Actual (*)</label><input type="password" id="current-password" required></div>
+                        <div class="form-group"><label for="new-password">Nueva Contraseña (*)</label><input type="password" id="new-password" required></div>
+                        <div class="form-group"><label for="confirm-new-password">Confirmar Nueva (*)</label><input type="password" id="confirm-new-password" required></div>
+                        <div id="change-password-message" class="status-message"></div>
+                        <button type="submit" class="btn btn-primary">Cambiar Contraseña</button>
+                    </form>
+                </div>
+                <div class="settings-section" id="employee-management-section" style="display: none;">
+                    <h3>Gestión de Empleados</h3>
+                    <button id="btn-show-add-user-modal" class="btn btn-primary" style="margin-bottom: 15px;"><i>➕</i> Nuevo Usuario</button>
+                    <div class="table-container"><table id="users-table" class="simple-table"><thead><tr><th>Usuario</th><th>Nombre</th><th>Rol</th><th>Estado</th><th>Acciones</th></tr></thead><tbody id="users-table-body"></tbody></table></div>
+                    <p id="no-users-message" style="display:none; text-align: center; margin-top:10px;">No hay otros usuarios.</p>
+                </div>
+                <div class="settings-section">
+                    <h3>Copia de Seguridad y Restauración</h3>
+                    <p>Realice copias de seguridad de sus datos regularmente para evitar pérdidas.</p>
+                    <div style="display:flex; gap:10px; margin-top:10px;">
+                        <button id="btn-backup-data" class="btn btn-secondary"><i>💾</i> Crear Copia de Seguridad</button>
+                        <button id="btn-restore-data" class="btn btn-danger"><i>🔄</i> Restaurar desde Copia</button>
+                    </div>
+                    <div id="backup-restore-message" class="status-message" style="margin-top:15px;"></div>
+                </div>
+            </div>
+            <div id="user-modal" class="modal">
+                <div class="modal-content">
+                    <div class="modal-header"><h2 id="user-modal-title"></h2><span class="close-button" id="user-modal-close-btn">×</span></div>
+                    <div class="modal-body">
+                        <form id="user-form">
+                            <input type="hidden" id="user-id-input">
+                            <div class="form-group"><label for="user-username">Usuario (*)</label><input type="text" id="user-username" required></div>
+                            <div class="form-group"><label for="user-full-name">Nombre Completo (*)</label><input type="text" id="user-full-name" required></div>
+                            <div class="form-group" id="user-password-group"><label for="user-password">Contraseña (*)</label><input type="password" id="user-password"></div>
+                            <div class="form-group" id="user-confirm-password-group"><label for="user-confirm-password">Confirmar Contraseña (*)</label><input type="password" id="user-confirm-password"></div>
+                            <div class="form-group"><label for="user-role">Rol (*)</label><select id="user-role" required><option value="employee">Empleado</option><option value="admin">Administrador</option></select></div>
+                            <div class="form-group"><label for="user-is-active">Estado</label><select id="user-is-active"><option value="1">Activo</option><option value="0">Inactivo</option></select></div>
+                            <div id="user-form-error-message" class="error-message"></div>
+                            <div class="modal-footer">
+                                <button type="button" id="btn-cancel-user-form" class="btn btn-secondary">Cancelar</button>
+                                <button type="submit" id="btn-save-user-form" class="btn btn-primary">Guardar</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div> 
+    </div> 
+    <script src="../js/mainRenderer.js"></script>
+</body>
+</html>
