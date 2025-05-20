@@ -7,27 +7,31 @@ const fs = require('fs');
 const path = require('path');
 const { app, dialog } = require('electron');
 
-// Configuración de fuentes para pdfmake (asumiendo la estructura del build)
-// Esta ruta es crucial y puede necesitar ajustes dependiendo de cómo electron-builder empaquete.
-// El objetivo es que process.resourcesPath apunte al directorio raíz de la app desempaquetada.
-const resourcesPath = app.isPackaged ? process.resourcesPath : path.join(__dirname, '../..');
+// src/main/reportManager.js
+// ...
+// const projectRoot = path.join(__dirname, '../..'); // Should resolve to project root
+const localFontsBasePath = path.join(__dirname, 'assets', 'fonts'); // Relative to src/main/
 
 const fonts = {
     Roboto: {
-        normal: path.join(resourcesPath, 'node_modules/pdfmake/build/pdfmake/Roboto-Regular.ttf'),
-        bold: path.join(resourcesPath, 'node_modules/pdfmake/build/pdfmake/Roboto-Medium.ttf'),
-        italics: path.join(resourcesPath, 'node_modules/pdfmake/build/pdfmake/Roboto-Italic.ttf'),
-        bolditalics: path.join(resourcesPath, 'node_modules/pdfmake/build/pdfmake/Roboto-MediumItalic.ttf')
+        normal: path.join(localFontsBasePath, 'Roboto-Regular.ttf'),
+        bold: path.join(localFontsBasePath, 'Roboto-Medium.ttf'),
+        italics: path.join(localFontsBasePath, 'Roboto-Italic.ttf'),
+        bolditalics: path.join(localFontsBasePath, 'Roboto-MediumItalic.ttf')
     }
 };
-// Verificar si las fuentes existen en las rutas esperadas, si no, intentar un fallback o loguear un error.
-Object.values(fonts.Roboto).forEach(fontPath => {
+
+// Verification log for the new paths
+Object.entries(fonts.Roboto).forEach(([style, fontPath]) => {
     if (!fs.existsSync(fontPath)) {
-        console.warn(`Fuente PDF no encontrada en: ${fontPath}. El PDF podría no generarse correctamente.`);
-        // Podrías tener rutas alternativas aquí si es necesario para diferentes escenarios de empaquetado.
+        console.warn(`[FONT WORKAROUND] PDF font style '${style}' not found at: ${fontPath}. Check download and path construction.`);
+    } else {
+        console.log(`[FONT WORKAROUND] PDF font style '${style}' found at: ${fontPath}`);
     }
 });
+
 const printer = new PdfPrinter(fonts);
+// ...
 
 
 /**

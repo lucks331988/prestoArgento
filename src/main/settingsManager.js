@@ -140,13 +140,23 @@ async function restoreDatabaseAndDocuments(parentWindow) {
         }
 
         // --- SECCIÓN CRÍTICA: Detener acceso a BD y reemplazar archivos ---
-        // Idealmente, cerrar la conexión a la BD aquí (dbModule.db.close())
-        // Pero esto requiere que dbModule exponga un método close() y un reOpen() o que la app se reinicie.
-        // Por ahora, confiamos en que el reinicio forzoso maneje la reconexión.
+        // --- SECCIÓN CRÍTICA: Detener acceso a BD y reemplazar archivos ---
+        console.log("Cerrando conexión a la base de datos antes de la restauración...");
+        const dbModule = require('./database'); // Asegurarse de que el path sea correcto
+        try {
+            await dbModule.closeDatabaseConnection();
+            console.log("Conexión a la base de datos cerrada exitosamente.");
+        } catch (closeDbError) {
+            console.warn("Advertencia: Error al cerrar la conexión de la base de datos antes de la restauración. Esto podría causar problemas si la BD sigue en uso.", closeDbError);
+            // Continuar con la restauración bajo advertencia, ya que el reinicio podría mitigar el problema.
+        }
+        
         console.log("Iniciando reemplazo de archivos para restauración...");
 
         // Backup de emergencia de los datos actuales (opcional pero MUY recomendado)
-        const emergencyBackupDir = path.join(prestoArgentoDataPath, `_emergency_backup_${DateTime.now().toFormat('yyyyMMdd_HHmmss')}`);
+        // Nota: DateTime no está definido aquí, usar new Date() para el timestamp del backup de emergencia.
+        const emergencyBackupTimestamp = new Date().toISOString().replace(/:/g, '-').split('.')[0]; // Formato amigable para nombre de archivo
+        const emergencyBackupDir = path.join(prestoArgentoDataPath, `_emergency_backup_${emergencyBackupTimestamp}`);
         try {
             if (fs.existsSync(prestoArgentoDataPath)) { // Si existe la carpeta de datos
                  await fs.copy(prestoArgentoDataPath, emergencyBackupDir);
@@ -154,18 +164,35 @@ async function restoreDatabaseAndDocuments(parentWindow) {
             }
         } catch (emergErr) {
             console.error("Error crítico creando backup de emergencia de datos actuales:", emergErr);
-            // Considerar no continuar si el backup de emergencia falla, o advertir severamente.
         }
 
-        // Eliminar datos actuales (directorios principales)
+        // Eliminar datos actuales (directorios principales y archivo de BD)
+        console.log("Eliminando datos actuales...");
         const currentDataDirs = [documentsPath, companyInfoPathDir, contractsPathDir, receiptsPathDir];
         for (const dir of currentDataDirs) {
-            if (fs.existsSync(dir)) await fs.remove(dir);
+            if (fs.existsSync(dir)) {
+                 try { await fs.remove(dir); console.log(`Directorio eliminado: ${dir}`); }
+                 catch (removeErr) { console.error(`Error eliminando directorio ${dir}:`, removeErr); }
+            }
         }
-        if (fs.existsSync(dbPath)) await fs.remove(dbPath); // Eliminar la BD actual
+        if (fs.existsSync(dbPath)) {
+            try { await fs.remove(dbPath); console.log(`Archivo de BD eliminado: ${dbPath}`); }
+            catch (removeErr) { console.error(`Error eliminando archivo de BD ${dbPath}:`, removeErr); }
+        }
+
 
         // Copiar los archivos restaurados desde temp a la ubicación de datos de la app
-        await fs.copy(restoredDbPath, dbPath);
+        console.log("Copiando archivos restaurados...");
+        try {
+            await fs.copy(restoredDbPath, dbPath);
+            console.log(`Base de datos restaurada en: ${dbPath}`);
+        } catch (copyDbErr) {
+            console.error("Error CRÍTICO al copiar la nueva base de datos:", copyDbErr);
+            // Intentar restaurar el backup de emergencia de la BD si es posible, o al menos no eliminar el tempRestoreDir todavía.
+            // Este es un punto de fallo grave.
+            await fs.remove(tempRestoreDir);
+            return { success: false, message: `Error CRÍTICO al copiar la nueva base de datos: ${copyDbErr.message}. Los datos podrían estar corruptos.` };
+        }
         
         const restoredDirsToCopy = [
             { tempPath: path.join(tempRestoreDir, documentsDirName), finalPath: documentsPath },

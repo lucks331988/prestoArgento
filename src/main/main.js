@@ -199,9 +199,19 @@ ipcMain.handle('user:get-current', async () => currentUser ? { success: true, us
 // Configuración Empresa
 ipcMain.handle('settings:get-company-info', async () => {
     try {
-        let info = await dbModule.get('SELECT name, address, phone, cuit, logo_path, default_daily_interest_rate, default_monthly_interest_rate FROM company_info WHERE id = 1');
+        let info = await dbModule.get('SELECT name, address, phone, cuit, logo_path, default_daily_interest_rate, default_monthly_interest_rate, default_daily_arrears_rate FROM company_info WHERE id = 1');
         if (!info) {
-            info = { name: 'Presto Argento', address: '', phone: '', cuit: '', logo_path: null, default_daily_interest_rate: 0.01, default_monthly_interest_rate: 0.10 };
+            // Ensure default object matches all fields, including the new one
+            info = { 
+                name: 'Presto Argento', 
+                address: '', 
+                phone: '', 
+                cuit: '', 
+                logo_path: null, 
+                default_daily_interest_rate: 0.01, 
+                default_monthly_interest_rate: 0.10,
+                default_daily_arrears_rate: 0.001 // Default for the new field
+            };
         }
         return { success: true, data: info };
     } catch (error) {
@@ -210,12 +220,22 @@ ipcMain.handle('settings:get-company-info', async () => {
     }
 });
 ipcMain.handle('settings:save-company-info', async (event, companyData) => {
+    if (!currentUser || currentUser.role !== 'admin') { return { success: false, message: 'Acción no autorizada. Se requiere rol de administrador.' }; }
     try {
-        const { name, address, phone, cuit, logo_path, default_daily_interest_rate, default_monthly_interest_rate } = companyData;
+        const { name, address, phone, cuit, logo_path, default_daily_interest_rate, default_monthly_interest_rate, default_daily_arrears_rate } = companyData;
         if (!name) return { success: false, message: "El nombre de la empresa es obligatorio." };
+        
+        // Ensure default_daily_arrears_rate is a number, default to 0.001 if not provided or invalid
+        const arrearsRateToSave = (typeof default_daily_arrears_rate === 'number' && !isNaN(default_daily_arrears_rate)) 
+                                ? default_daily_arrears_rate 
+                                : 0.001;
+
         await dbModule.run(
-            `UPDATE company_info SET name = ?, address = ?, phone = ?, cuit = ?, logo_path = ?, default_daily_interest_rate = ?, default_monthly_interest_rate = ? WHERE id = 1`,
-            [name, address, phone, cuit, logo_path, default_daily_interest_rate, default_monthly_interest_rate]
+            `UPDATE company_info SET 
+                name = ?, address = ?, phone = ?, cuit = ?, logo_path = ?, 
+                default_daily_interest_rate = ?, default_monthly_interest_rate = ?, default_daily_arrears_rate = ? 
+             WHERE id = 1`,
+            [name, address, phone, cuit, logo_path, default_daily_interest_rate, default_monthly_interest_rate, arrearsRateToSave]
         );
         return { success: true, message: 'Información de la empresa guardada correctamente.' };
     } catch (error) {
@@ -224,6 +244,7 @@ ipcMain.handle('settings:save-company-info', async (event, companyData) => {
     }
 });
 ipcMain.handle('dialog:open-file-logo', async (event) => {
+    if (!currentUser || currentUser.role !== 'admin') { return { success: false, message: 'Acción no autorizada. Se requiere rol de administrador.' }; }
     const parentWindow = BrowserWindow.fromWebContents(event.sender);
     const result = await dialog.showOpenDialog(parentWindow, {
         properties: ['openFile'],
@@ -262,7 +283,7 @@ ipcMain.handle('get-company-logo-path', async () => {
 
 // Gestión de Usuarios
 ipcMain.handle('users:register', async (event, userData) => {
-    if (!currentUser) return { success: false, message: "No hay usuario autenticado para realizar esta acción." };
+    if (!currentUser || currentUser.role !== 'admin') { return { success: false, message: 'Acción no autorizada. Se requiere rol de administrador.' }; }
     return await userManager.registerUser(userData, currentUser);
 });
 ipcMain.handle('users:get-all', async () => {
@@ -276,30 +297,45 @@ ipcMain.handle('users:get-by-id', async (event, userId) => {
     } catch (e) { return { success: false, message: e.message }; }
 });
 ipcMain.handle('users:update', async (event, userIdToUpdate, dataToUpdate) => {
-    if (!currentUser) return { success: false, message: "No hay usuario autenticado." };
+    if (!currentUser || currentUser.role !== 'admin') { return { success: false, message: 'Acción no autorizada. Se requiere rol de administrador.' }; }
     return await userManager.updateUser(userIdToUpdate, dataToUpdate, currentUser);
 });
 ipcMain.handle('users:change-current-password', async (event, { currentPassword, newPassword }) => {
-    if (!currentUser) return { success: false, message: 'No hay usuario autenticado.' };
+    if (!currentUser || currentUser.role !== 'admin') { return { success: false, message: 'Acción no autorizada. Se requiere rol de administrador.' }; }
     return await userManager.changeCurrentUserPassword(currentUser.id, currentPassword, newPassword);
 });
 
 // Gestión de Clientes
-ipcMain.handle('clients:add', async (event, clientData) => await clientManager.addClient(clientData));
+ipcMain.handle('clients:add', async (event, clientData) => {
+    if (!currentUser || !['admin', 'employee'].includes(currentUser.role)) { return { success: false, message: 'Acción no autorizada.' }; }
+    return await clientManager.addClient(clientData);
+});
 ipcMain.handle('clients:get-all', async (event, activeOnly = true) => {
+    if (!currentUser || !['admin', 'employee'].includes(currentUser.role)) { return { success: false, message: 'Acción no autorizada.' }; }
     try { return { success: true, data: await clientManager.getAllClients(activeOnly) }; }
     catch (e) { return { success: false, message: e.message }; }
 });
 ipcMain.handle('clients:get-by-id', async (event, clientId) => {
+    if (!currentUser || !['admin', 'employee'].includes(currentUser.role)) { return { success: false, message: 'Acción no autorizada.' }; }
     try {
         const client = await clientManager.getClientById(clientId);
         return client ? { success: true, data: client } : { success: false, message: 'Cliente no encontrado.' };
     } catch (e) { return { success: false, message: e.message }; }
 });
-ipcMain.handle('clients:update', async (event, clientId, clientData) => await clientManager.updateClient(clientId, clientData));
-ipcMain.handle('clients:deactivate', async (event, clientId) => await clientManager.deactivateClient(clientId));
-ipcMain.handle('clients:reactivate', async (event, clientId) => await clientManager.reactivateClient(clientId));
+ipcMain.handle('clients:update', async (event, clientId, clientData) => {
+    if (!currentUser || !['admin', 'employee'].includes(currentUser.role)) { return { success: false, message: 'Acción no autorizada.' }; }
+    return await clientManager.updateClient(clientId, clientData);
+});
+ipcMain.handle('clients:deactivate', async (event, clientId) => {
+    if (!currentUser || !['admin', 'employee'].includes(currentUser.role)) { return { success: false, message: 'Acción no autorizada.' }; }
+    return await clientManager.deactivateClient(clientId);
+});
+ipcMain.handle('clients:reactivate', async (event, clientId) => {
+    if (!currentUser || !['admin', 'employee'].includes(currentUser.role)) { return { success: false, message: 'Acción no autorizada.' }; }
+    return await clientManager.reactivateClient(clientId);
+});
 ipcMain.handle('clients:upload-document', async (event, clientId, documentType) => {
+    if (!currentUser || !['admin', 'employee'].includes(currentUser.role)) { return { success: false, message: 'Acción no autorizada.' }; }
     const parentWindow = BrowserWindow.fromWebContents(event.sender);
     const result = await dialog.showOpenDialog(parentWindow, {
         properties: ['openFile'],
@@ -310,21 +346,30 @@ ipcMain.handle('clients:upload-document', async (event, clientId, documentType) 
     const originalFilename = path.basename(filePath);
     return await clientManager.uploadClientDocument(clientId, documentType, filePath, originalFilename);
 });
-ipcMain.handle('clients:delete-document', async (event, documentId) => await clientManager.deleteClientDocument(documentId));
+ipcMain.handle('clients:delete-document', async (event, documentId) => {
+    if (!currentUser || !['admin', 'employee'].includes(currentUser.role)) { return { success: false, message: 'Acción no autorizada.' }; }
+    return await clientManager.deleteClientDocument(documentId);
+});
 ipcMain.handle('get-documents-path', async () => {
+    // Read-only operation, access control might be less strict or handled by features using this path.
+    // For now, assuming it's okay if any authenticated user can get this path.
     return path.join(documentsPathDir, 'clients');
 });
 
 // Gestión de Préstamos
 ipcMain.handle('loans:calculate-details', (event, params) => {
-    let rateForCalc = params.interestRate; 
-    if (params.loanType === 'monthly') {
-        rateForCalc = params.interestRate * 12; 
-    }
+    // The rate from params.interestRate is assumed to be the effective period rate.
+    // For 'monthly' loanType, params.interestRate should be the monthly rate.
+    // For 'daily' loanType, params.interestRate should be the daily rate.
+    const rateForCalc = params.interestRate; 
     try {
         const details = loanManager.calculateLoanDetails(
-            params.principal, rateForCalc, params.term,
-            params.loanType, params.startDate, params.fixedInstallmentAmount
+            params.principal, 
+            rateForCalc, // Pass the rate directly
+            params.term,
+            params.loanType, 
+            params.startDate, 
+            params.fixedInstallmentAmount
         );
         return { success: true, data: details };
     } catch (error) {
@@ -333,7 +378,7 @@ ipcMain.handle('loans:calculate-details', (event, params) => {
     }
 });
 ipcMain.handle('loans:register', async (event, loanData) => {
-    if (!currentUser) return { success: false, message: "No hay usuario autenticado." };
+    if (!currentUser || !['admin', 'employee'].includes(currentUser.role)) { return { success: false, message: 'Acción no autorizada.' }; }
     return await loanManager.registerLoan(loanData, currentUser.id);
 });
 ipcMain.handle('loans:get-all', async (event, filters = {}) => {
@@ -347,34 +392,39 @@ ipcMain.handle('loans:get-by-id', async (event, loanId) => {
     } catch (e) { return { success: false, message: e.message }; }
 });
 ipcMain.handle('loans:update-status', async (event, loanId, newStatus) => {
-    if (!currentUser) return { success: false, message: "No hay usuario autenticado." };
+    if (!currentUser || !['admin', 'employee'].includes(currentUser.role)) { return { success: false, message: 'Acción no autorizada.' }; }
     return await loanManager.updateLoanStatus(loanId, newStatus, currentUser.id);
 });
 ipcMain.handle('loans:generate-contract', async (event, loanId) => await loanManager.generateLoanContract(loanId));
 
 // Gestión de Pagos
 ipcMain.handle('payments:record', async (event, paymentData) => {
-    if (!currentUser) return { success: false, message: "No hay usuario autenticado." };
+    if (!currentUser || !['admin', 'employee'].includes(currentUser.role)) { return { success: false, message: 'Acción no autorizada.' }; }
     return await paymentManager.recordPayment(paymentData, currentUser.id);
 });
 ipcMain.handle('payments:get-all', async (event, filters = {}) => {
     try { return { success: true, data: await paymentManager.getAllPayments(filters) }; }
     catch (e) { return { success: false, message: e.message }; }
 });
-ipcMain.handle('payments:calculate-arrears', async (event, installmentId, dailyArrearsRate) => {
-    return await paymentManager.calculateArrears(installmentId, dailyArrearsRate);
+ipcMain.handle('payments:calculate-arrears', async (event, installmentId) => { // Signature fixed
+    if (!currentUser || !['admin', 'employee'].includes(currentUser.role)) { return { success: false, message: 'Acción no autorizada.' }; }
+    return await paymentManager.calculateArrears(installmentId);
 });
    
 // Backup y Restauración
 ipcMain.handle('settings:backup', async (event) => {
+    if (!currentUser || currentUser.role !== 'admin') { return { success: false, message: 'Acción no autorizada. Se requiere rol de administrador.' }; }
     return await settingsManager.backupDatabaseAndDocuments(BrowserWindow.fromWebContents(event.sender));
 });
 ipcMain.handle('settings:restore', async (event) => {
+    if (!currentUser || currentUser.role !== 'admin') { return { success: false, message: 'Acción no autorizada. Se requiere rol de administrador.' }; }
     return await settingsManager.restoreDatabaseAndDocuments(BrowserWindow.fromWebContents(event.sender));
 });
 
 // Reportes
 ipcMain.handle('reports:get-data', async (event, reportType, filters) => {
+    // Assuming 'employee' can also view reports. If only 'admin', change check.
+    if (!currentUser || !['admin', 'employee'].includes(currentUser.role)) { return { success: false, message: 'Acción no autorizada.' }; }
     try {
         let data;
         if (reportType === 'loans') data = await reportManager.getLoansReportData(filters);
@@ -387,6 +437,8 @@ ipcMain.handle('reports:get-data', async (event, reportType, filters) => {
     }
 });
 ipcMain.handle('reports:export', async (event, reportType, data, format) => {
+    // Assuming 'employee' can also export reports. If only 'admin', change check.
+    if (!currentUser || !['admin', 'employee'].includes(currentUser.role)) { return { success: false, message: 'Acción no autorizada.' }; }
     return await reportManager.exportReport(reportType, data, format, BrowserWindow.fromWebContents(event.sender));
 });
 

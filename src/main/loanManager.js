@@ -7,15 +7,27 @@ const fs = require('fs');
 const { app } = require('electron');
 
 // Configuración de PdfPrinter y fuentes (similar a paymentManager)
-const resourcesPath = process.env.NODE_ENV === 'development' ? path.join(__dirname, '../..') : process.resourcesPath;
+// const resourcesPath = process.env.NODE_ENV === 'development' ? path.join(__dirname, '../..') : process.resourcesPath;
+const localFontsBasePath = path.join(__dirname, 'assets', 'fonts'); // Relative to src/main/
+
 const fonts = {
     Roboto: {
-        normal: path.join(resourcesPath, 'node_modules/pdfmake/build/pdfmake/Roboto-Regular.ttf'),
-        bold: path.join(resourcesPath, 'node_modules/pdfmake/build/pdfmake/Roboto-Medium.ttf'),
-        italics: path.join(resourcesPath, 'node_modules/pdfmake/build/pdfmake/Roboto-Italic.ttf'),
-        bolditalics: path.join(resourcesPath, 'node_modules/pdfmake/build/pdfmake/Roboto-MediumItalic.ttf')
+        normal: path.join(localFontsBasePath, 'Roboto-Regular.ttf'),
+        bold: path.join(localFontsBasePath, 'Roboto-Medium.ttf'),
+        italics: path.join(localFontsBasePath, 'Roboto-Italic.ttf'),
+        bolditalics: path.join(localFontsBasePath, 'Roboto-MediumItalic.ttf')
     }
 };
+
+// Verification log for the new paths (optional here if done in reportManager, but good for confirmation)
+Object.entries(fonts.Roboto).forEach(([style, fontPath]) => {
+    if (!fs.existsSync(fontPath)) {
+        console.warn(`[FONT WORKAROUND - LoanManager] PDF font style '${style}' not found at: ${fontPath}.`);
+    } else {
+        console.log(`[FONT WORKAROUND - LoanManager] PDF font style '${style}' found at: ${fontPath}`);
+    }
+});
+
 const printer = new PdfPrinter(fonts);
 
 const userDataPath = app.getPath('userData');
@@ -59,9 +71,10 @@ function calculateLoanDetails(principal, effectivePeriodRate, term, loanType, st
             // N = Número total de períodos (meses)
             // C = P * [ I * (1+I)^N ] / [ (1+I)^N – 1]
             actualInstallmentAmount = parseFloat(
-                (principal * (monthlyRate * Math.pow(1 + monthlyRate, numberOfInstallments))) /
-                (Math.pow(1 + monthlyRate, numberOfInstallments) - 1)
-            .toFixed(2));
+                ( (principal * (monthlyRate * Math.pow(1 + monthlyRate, numberOfInstallments))) /
+                  (Math.pow(1 + monthlyRate, numberOfInstallments) - 1)
+                ).toFixed(2)
+            );
             
             totalInterest = parseFloat(((actualInstallmentAmount * numberOfInstallments) - principal).toFixed(2));
         }
@@ -376,7 +389,7 @@ async function generateLoanContract(loanId) {
                 { text: [{text: '1. OBJETO: ', bold: true}, `EL PRESTAMISTA otorga a EL DEUDOR $${loan.principal_amount.toLocaleString('es-AR')} (${numberToWords(loan.principal_amount)} pesos).`], margin:[0,0,0,10], alignment: 'justify' },
                 { text: [{text: '2. DEVOLUCIÓN: ', bold: true}, `${loan.number_of_installments} cuotas de $${loan.installment_amount.toLocaleString('es-AR')} (${numberToWords(loan.installment_amount)} pesos) c/u. Tasa ${loan.loan_type === 'daily' ? 'diaria' : 'mensual'} del ${(loan.interest_rate * 100).toFixed(2)}%. Total a devolver $${loan.total_amount_due.toLocaleString('es-AR')}. Primer vcto: ${DateTime.fromISO(loan.installments[0].due_date).toFormat('dd/MM/yyyy')}.`], margin:[0,0,0,10], alignment: 'justify' },
                 { text: 'PLAN DE PAGOS:', style: 'subsectionTitle'}, { table: { body: installmentsTableBody, widths: ['auto', '*', 'auto'] }, layout: 'lightHorizontalLines', margin:[0,0,0,10]},
-                { text: [{text: '3. MORA: ', bold: true}, `Interés punitorio diario del [DEFINIR TASA MORA]% sobre saldos impagos.`], margin:[0,0,0,10], alignment: 'justify' },
+                { text: [{text: '3. MORA: ', bold: true}, `Interés punitorio diario del ${( (companyInfo.default_daily_arrears_rate || 0.001) * 100).toFixed(2)}% sobre saldos impagos.`], margin:[0,0,0,10], alignment: 'justify' },
                 // ... (Más cláusulas)
                 { text: 'Firmas ...', margin: [0,30,0,0] }, // Placeholder firmas
                  {

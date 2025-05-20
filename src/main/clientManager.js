@@ -131,23 +131,36 @@ async function updateClient(clientId, clientData) {
             // Renombrar carpeta de documentos si el DNI cambia
             const oldClientDocPath = path.join(baseClientsDocumentsPath, clientToUpdate.dni.toString());
             const newClientDocPath = path.join(baseClientsDocumentsPath, dni.trim());
+
             if (fs.existsSync(oldClientDocPath) && oldClientDocPath !== newClientDocPath) {
                 try {
-                    if (fs.existsSync(newClientDocPath)) { // Si ya existe una carpeta con el nuevo DNI (raro, pero posible si hubo datos corruptos)
-                         console.warn(`La carpeta para el nuevo DNI ${newClientDocPath} ya existe. No se renombrará la carpeta de documentos.`);
+                    if (fs.existsSync(newClientDocPath)) {
+                        // If a directory already exists for the new DNI, this is a conflict.
+                        // This scenario should ideally be rare and might indicate orphaned data.
+                        // For safety, prevent DNI update if target directory for new DNI already exists and isn't empty (or handle merging if appropriate, though merging is complex)
+                        // For now, we'll treat it as a conflict that prevents the DNI change.
+                        console.warn(`Conflicto: La carpeta para el nuevo DNI ${newClientDocPath} ya existe. No se puede renombrar automáticamente.`);
+                        return { success: false, message: `Conflicto: Ya existe un directorio para el nuevo DNI ${dni}. No se actualizó el DNI.` };
                     } else {
                         fs.renameSync(oldClientDocPath, newClientDocPath);
                         console.log(`Carpeta de documentos renombrada de ${oldClientDocPath} a ${newClientDocPath}`);
                     }
                 } catch (renameError) {
                     console.error('Error renombrando carpeta de documentos del cliente:', renameError);
-                    // No detener la actualización del cliente por esto, pero es una advertencia importante.
-                    // Podría devolverse un mensaje parcial de éxito.
+                    return { success: false, message: 'Error al renombrar el directorio de documentos del cliente. No se actualizó el DNI.' };
                 }
             } else if (!fs.existsSync(oldClientDocPath) && !fs.existsSync(newClientDocPath)) {
-                 // Si no existía la carpeta antigua, crear la nueva
-                fs.mkdirSync(newClientDocPath, { recursive: true });
+                // If the old document path didn't exist, create the new one (e.g., for a client who never had documents yet)
+                try {
+                    fs.mkdirSync(newClientDocPath, { recursive: true });
+                    console.log(`Directorio de documentos creado para el nuevo DNI en: ${newClientDocPath}`);
+                } catch (mkdirError) {
+                    console.error(`Error creando el directorio de documentos para el nuevo DNI ${dni}:`, mkdirError);
+                    return { success: false, message: `Error al crear el directorio de documentos para el nuevo DNI ${dni}. No se actualizó el DNI.`};
+                }
             }
+            // If oldClientDocPath === newClientDocPath, no action needed.
+            // If oldClientDocPath doesn't exist but newClientDocPath does, also no action (already exists).
         }
         
         const result = await dbUtil.run(

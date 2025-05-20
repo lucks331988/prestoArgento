@@ -262,11 +262,13 @@ async function getAllPayments(filters = {}) {
 /**
  * Calcula interés por mora para una cuota.
  * @param {number} installmentId
- * @param {number} dailyArrearsRate - Tasa de mora diaria (ej: 0.001 para 0.1% diario).
  * @returns {Promise<object>} - { success, arrearsAmount, daysOverdue, message }
  */
-async function calculateArrears(installmentId, dailyArrearsRate = 0.001) { 
+async function calculateArrears(installmentId) { 
     try {
+        const companyInfo = await dbUtil.get('SELECT default_daily_arrears_rate FROM company_info WHERE id = 1');
+        const effectiveDailyArrearsRate = (companyInfo && typeof companyInfo.default_daily_arrears_rate === 'number') ? companyInfo.default_daily_arrears_rate : 0.001; // Fallback
+
         const installment = await dbUtil.get(
             'SELECT amount_due, amount_paid, due_date, status, interest_on_arrears FROM loan_installments WHERE id = ?',
             [installmentId]
@@ -293,11 +295,21 @@ async function calculateArrears(installmentId, dailyArrearsRate = 0.001) {
         
         if (principalOwedForInstallment <= 0) return { success: true, arrearsAmount: 0, daysOverdue, message: "El capital de la cuota está cubierto." };
 
-        const arrearsAmount = parseFloat((principalOwedForInstallment * dailyArrearsRate * daysOverdue).toFixed(2));
+        const arrearsAmount = parseFloat((principalOwedForInstallment * effectiveDailyArrearsRate * daysOverdue).toFixed(2));
         
-        // Opcional: actualizar `interest_on_arrears` en la BD aquí, pero puede ser mejor
-        // hacerlo solo cuando se va a registrar un pago que incluya la mora.
-        // await dbUtil.run('UPDATE loan_installments SET interest_on_arrears = ? WHERE id = ?', [arrearsAmount, installmentId]);
+        if (arrearsAmount > 0 && daysOverdue > 0) {
+            try {
+                await dbUtil.run(
+                    'UPDATE loan_installments SET interest_on_arrears = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+                    [arrearsAmount, installmentId]
+                );
+                console.log(`Mora de ${arrearsAmount} actualizada para cuota ID: ${installmentId}`);
+            } catch (updateError) {
+                console.error(`Error actualizando mora para cuota ID ${installmentId}:`, updateError);
+                // Propagate the error to be caught by the main try/catch
+                throw new Error(`Error al actualizar la mora en la base de datos: ${updateError.message}`);
+            }
+        }
 
         return { success: true, arrearsAmount, daysOverdue };
     } catch (error) {
