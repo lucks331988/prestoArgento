@@ -4,7 +4,9 @@ const path = require('path');
 const fs = require('fs');
 
 // Importar módulos locales
-const dbModule = require('./database');
+const dbModule = require('./database'); // dbModule already contains getDBFilePath
+const fs = require('fs-extra'); // For fs.copyFile
+// const path = require('path'); // path is already required globally in this file
 const authModule = require('./auth');
 const userManager = require('./userManager');
 const clientManager = require('./clientManager');
@@ -364,14 +366,129 @@ ipcMain.handle('payments:get-all', async (event, filters = {}) => {
 ipcMain.handle('payments:calculate-arrears', async (event, installmentId, dailyArrearsRate) => {
     return await paymentManager.calculateArrears(installmentId, dailyArrearsRate);
 });
+
+async function handleBackupData() {
+    try {
+        const sourceDBPath = dbModule.getDBFilePath(); 
+
+        const { canceled, filePath } = await dialog.showSaveDialog({
+            title: 'Guardar copia de seguridad de la base de datos',
+            defaultPath: `prestoargento_backup_${Date.now()}.sqlite`,
+            filters: [
+                { name: 'SQLite Databases', extensions: ['sqlite', 'db', 'sqlite3'] },
+                { name: 'All Files', extensions: ['*'] }
+            ]
+        });
+
+        if (canceled || !filePath) {
+            return { success: false, message: 'Copia de seguridad cancelada por el usuario.' };
+        }
+
+        await fs.copyFile(sourceDBPath, filePath);
+        return { success: true, message: `Copia de seguridad guardada en: ${filePath}` };
+
+    } catch (error) {
+        console.error('Error creando copia de seguridad:', error);
+        return { success: false, message: `Error al crear copia de seguridad: ${error.message}` };
+    }
+}
    
 // Backup y Restauración
-ipcMain.handle('settings:backup', async (event) => {
-    return await settingsManager.backupDatabaseAndDocuments(BrowserWindow.fromWebContents(event.sender));
-});
-ipcMain.handle('settings:restore', async (event) => {
-    return await settingsManager.restoreDatabaseAndDocuments(BrowserWindow.fromWebContents(event.sender));
-});
+// ipcMain.handle('settings:backup', async (event) => {
+//     return await settingsManager.backupDatabaseAndDocuments(BrowserWindow.fromWebContents(event.sender));
+// });
+// Replace the old settings:backup with the new perform-backup
+ipcMain.handle('perform-backup', handleBackupData);
+
+async function handleRestoreData() {
+    try {
+        // 1. Select Backup File
+        const { canceled: openCanceled, filePaths } = await dialog.showOpenDialog({
+            title: 'Seleccionar archivo de copia de seguridad para restaurar',
+            properties: ['openFile'],
+            filters: [
+                { name: 'SQLite Databases', extensions: ['sqlite', 'db', 'sqlite3'] },
+                { name: 'All Files', extensions: ['*'] }
+            ]
+        });
+
+        if (openCanceled || !filePaths || filePaths.length === 0) {
+            return { success: false, message: 'Restauración cancelada: No se seleccionó archivo.' };
+        }
+        const backupFilePath = filePaths[0];
+
+        // 2. Critical Confirmation
+        const { response } = await dialog.showMessageBox({
+            type: 'warning',
+            title: 'Confirmar Restauración',
+            message: '¿Está ABSOLUTAMENTE SEGURO de restaurar la base de datos desde el archivo seleccionado? TODOS LOS DATOS ACTUALES SERÁN PERDIDOS. Esta acción no se puede deshacer.',
+            buttons: ['Cancelar', 'Sí, Restaurar Base de Datos'],
+            defaultId: 0, // Index for 'Cancelar'
+            cancelId: 0
+        });
+
+        if (response === 0) { // User clicked 'Cancelar'
+            return { success: false, message: 'Restauración cancelada por el usuario.' };
+        }
+
+        // 3. Perform Restore
+        const targetDBPath = dbModule.getDBFilePath();
+        const targetDir = path.dirname(targetDBPath);
+
+        await fs.ensureDir(targetDir);
+        
+        if (typeof dbModule.closeDatabase === 'function') {
+             await dbModule.closeDatabase(); 
+        } else {
+            console.warn('dbModule.closeDatabase() function not found. File might be locked if in use.');
+        }
+
+        const oldDBPathBackup = `${targetDBPath}_old_${Date.now()}`;
+        let renamedOldDB = false;
+        try {
+            if (await fs.pathExists(targetDBPath)) {
+                await fs.rename(targetDBPath, oldDBPathBackup);
+                renamedOldDB = true;
+            }
+            await fs.copyFile(backupFilePath, targetDBPath);
+
+            if (renamedOldDB) {
+                await fs.remove(oldDBPathBackup);
+            }
+            
+            // Re-initialization of DB is complex and best handled by app restart.
+            // The main db instance in database.js would need to be re-created.
+            // Forcing app.relaunch() is an option here if automatic re-init is not built.
+
+            return { 
+                success: true, 
+                message: 'Base de datos restaurada exitosamente. CIERRE Y VUELVA A ABRIR LA APLICACIÓN AHORA.',
+                needsRestart: true 
+            };
+
+        } catch (copyError) {
+            if (renamedOldDB) {
+                try {
+                    await fs.rename(oldDBPathBackup, targetDBPath); // Attempt to restore original if copy failed
+                } catch (restoreOldError) {
+                    console.error('CRITICAL: Failed to restore original DB after copy error:', restoreOldError);
+                     // At this point, the DB state is uncertain. Inform user to manually check.
+                    return { success: false, message: `Error crítico durante la restauración. Error al copiar: ${copyError.message}. Error al restaurar el archivo original: ${restoreOldError.message}. Por favor, verifique manualmente los archivos de la base de datos.` };
+                }
+            }
+            console.error('Error durante la copia del archivo de restauración:', copyError);
+            return { success: false, message: `Error al restaurar: ${copyError.message}` };
+        }
+
+    } catch (error) {
+        console.error('Error en el proceso de restauración:', error);
+        return { success: false, message: `Error en el proceso de restauración: ${error.message}` };
+    }
+}
+
+// Replace the old settings:restore with the new perform-restore
+ipcMain.handle('perform-restore', handleRestoreData);
+
 
 // Reportes
 ipcMain.handle('reports:get-data', async (event, reportType, filters) => {

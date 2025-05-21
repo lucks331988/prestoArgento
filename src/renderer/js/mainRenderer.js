@@ -424,17 +424,331 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         function closeUserModal() { userModal.classList.remove('active'); userForm.reset(); currentEditingUserId_UserModule = null; }
 
-        if (companyInfoForm) { companyInfoForm.addEventListener('submit', async (e) => { e.preventDefault(); /* ... (lógica Fase 3) ... */ }); }
-        if (btnChangeLogo) { btnChangeLogo.addEventListener('click', async () => { /* ... (lógica Fase 3) ... */ }); }
-        if (interestRatesForm) { interestRatesForm.addEventListener('submit', async (e) => { e.preventDefault(); /* ... (lógica Fase 3) ... */ }); }
-        if (changePasswordForm) { changePasswordForm.addEventListener('submit', async (e) => { e.preventDefault(); /* ... (lógica Fase 3) ... */ }); }
+        if (companyInfoForm) {
+            companyInfoForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                companyInfoMessage.textContent = ''; companyInfoMessage.className = 'status-message';
+                const name = companyNameInput.value.trim();
+                const address = companyAddressInput.value.trim();
+                const phone = companyPhoneInput.value.trim();
+                const cuit = companyCuitInput.value.trim();
+
+                if (!name) {
+                    companyInfoMessage.textContent = 'El nombre de la empresa es obligatorio.';
+                    companyInfoMessage.className = 'status-message error';
+                    return;
+                }
+                try {
+                    // Assuming logo_path and rates are handled separately or part of a larger settings object if API expects all
+                    // For this specific form, only send what's directly editable here.
+                    // The existing loadCompanyInfoAndRates fetches all, so we need to pass them back if API updates selectively.
+                    // A better API might be window.electronAPI.updateCompanyDetails({ name, address, phone, cuit })
+                    // For now, let's assume the API can handle partial updates or we fetch and merge.
+                    // To be safe and match typical patterns, let's fetch current and merge.
+                    let currentInfo = await window.electronAPI.getCompanyInfo();
+                    if (!currentInfo.success) {
+                         companyInfoMessage.textContent = 'Error obteniendo configuración actual para guardar.';
+                         companyInfoMessage.className = 'status-message error';
+                         return;
+                    }
+
+                    const dataToSave = {
+                        ...currentInfo.data, // spread existing data
+                        name,
+                        address,
+                        phone,
+                        cuit
+                    };
+                    // Remove ID if it's part of the fetched data and not needed for update call
+                    delete dataToSave.id;
+
+
+                    const result = await window.electronAPI.saveCompanyInfo(dataToSave);
+                    if (result.success) {
+                        showAppMessage(result.message || 'Info. de empresa guardada.', 'success');
+                        await loadCompanyInfoAndRates();
+                        await loadCompanyInfoForSidebar();
+                    } else {
+                        companyInfoMessage.textContent = result.message || 'Error.';
+                        companyInfoMessage.className = 'status-message error';
+                    }
+                } catch (error) {
+                    console.error("Error guardando info empresa:", error);
+                    companyInfoMessage.textContent = 'Error com.';
+                    companyInfoMessage.className = 'status-message error';
+                }
+            });
+        }
+
+        if (btnChangeLogo) {
+            btnChangeLogo.addEventListener('click', async () => {
+                companyInfoMessage.textContent = ''; companyInfoMessage.className = 'status-message';
+                try {
+                    const result = await window.electronAPI.selectLogo(); // Corrected API call
+                    if (result.success) {
+                        showAppMessage(result.message || 'Logo cambiado.', 'success');
+                        await loadCompanyInfoAndRates(); // This should reload the preview
+                        await loadCompanyInfoForSidebar(); // This should update sidebar logo
+                    } else {
+                        if(result.message) { // Show message only if one is provided (e.g. cancellation)
+                           companyInfoMessage.textContent = result.message;
+                           companyInfoMessage.className = result.path ? 'status-message info' : 'status-message error'; // error if no path
+                        }
+                    }
+                } catch (error) {
+                    console.error("Error cambiando logo:", error);
+                    companyInfoMessage.textContent = 'Error com.';
+                    companyInfoMessage.className = 'status-message error';
+                }
+            });
+        }
+
+        if (interestRatesForm) {
+            interestRatesForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                interestRatesMessage.textContent = ''; interestRatesMessage.className = 'status-message';
+                const dailyRate = parseFloat(dailyInterestRateInput.value) / 100;
+                const monthlyRate = parseFloat(monthlyInterestRateInput.value) / 100;
+
+                if (isNaN(dailyRate) || dailyRate < 0 || isNaN(monthlyRate) || monthlyRate < 0) {
+                    interestRatesMessage.textContent = 'Tasas inválidas. Deben ser números positivos.';
+                    interestRatesMessage.className = 'status-message error';
+                    return;
+                }
+                try {
+                    // Similar to companyInfo, fetch current and merge to only update rates
+                     let currentInfo = await window.electronAPI.getCompanyInfo();
+                    if (!currentInfo.success) {
+                         interestRatesMessage.textContent = 'Error obteniendo configuración actual para guardar tasas.';
+                         interestRatesMessage.className = 'status-message error';
+                         return;
+                    }
+                     const dataToSave = {
+                        ...currentInfo.data,
+                        default_daily_interest_rate: dailyRate,
+                        default_monthly_interest_rate: monthlyRate
+                    };
+                    delete dataToSave.id;
+
+                    const result = await window.electronAPI.saveCompanyInfo(dataToSave); // Assuming saveCompanyInfo handles rates too
+                    if (result.success) {
+                        showAppMessage(result.message || 'Tasas guardadas.', 'success');
+                        // No specific reload needed here if success message is enough, loadCompanyInfoAndRates reloads all.
+                    } else {
+                        interestRatesMessage.textContent = result.message || 'Error.';
+                        interestRatesMessage.className = 'status-message error';
+                    }
+                } catch (error) {
+                    console.error("Error guardando tasas:", error);
+                    interestRatesMessage.textContent = 'Error com.';
+                    interestRatesMessage.className = 'status-message error';
+                }
+            });
+        }
+
+        if (changePasswordForm) {
+            changePasswordForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                changePasswordMessage.textContent = ''; changePasswordMessage.className = 'status-message';
+                const currentPassword = currentPasswordInput.value;
+                const newPassword = newPasswordInput.value;
+                const confirmNewPassword = confirmNewPasswordInput.value;
+
+                if (!currentPassword || !newPassword || !confirmNewPassword) {
+                    changePasswordMessage.textContent = 'Todos los campos son obligatorios.';
+                    changePasswordMessage.className = 'status-message error';
+                    return;
+                }
+                if (newPassword !== confirmNewPassword) {
+                    changePasswordMessage.textContent = 'Las nuevas contraseñas no coinciden.';
+                    changePasswordMessage.className = 'status-message error';
+                    return;
+                }
+                if (newPassword.length < 6) {
+                    changePasswordMessage.textContent = 'La nueva contraseña debe tener al menos 6 caracteres.';
+                    changePasswordMessage.className = 'status-message error';
+                    return;
+                }
+
+                try {
+                    const result = await window.electronAPI.changeCurrentUserPassword({ currentPassword, newPassword });
+                    if (result.success) {
+                        showAppMessage(result.message || 'Contraseña cambiada exitosamente.', 'success');
+                        changePasswordForm.reset();
+                    } else {
+                        changePasswordMessage.textContent = result.message || 'Error al cambiar la contraseña.';
+                        changePasswordMessage.className = 'status-message error';
+                    }
+                } catch (error) {
+                    console.error("Error cambiando contraseña:", error);
+                    changePasswordMessage.textContent = 'Error de comunicación al cambiar contraseña.';
+                    changePasswordMessage.className = 'status-message error';
+                }
+            });
+        }
+
         if (btnShowAddUserModal) btnShowAddUserModal.addEventListener('click', () => openUserModal());
         if (userModalCloseBtn) userModalCloseBtn.addEventListener('click', closeUserModal);
         if (btnCancelUserForm) btnCancelUserForm.addEventListener('click', closeUserModal);
-        if (userForm) { userForm.addEventListener('submit', async (e) => { e.preventDefault(); /* ... (lógica Fase 3) ... */ }); }
-        if (usersTableBody) { usersTableBody.addEventListener('click', async (e) => { /* ... (lógica Fase 3) ... */ }); }
-        if (btnBackupData) { btnBackupData.addEventListener('click', async () => { /* ... (lógica Fase 3) ... */ }); }
-        if (btnRestoreData) { btnRestoreData.addEventListener('click', async () => { /* ... (lógica Fase 3) ... */ }); }
+
+        if (userForm) {
+            userForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                userFormErrorMessage.textContent = '';
+                const userId = userIdInput_UserModule.value;
+                const username = userUsernameInput.value.trim();
+                const fullName = userFullNameInput.value.trim();
+                const password = userPasswordInput.value;
+                const confirmPassword = userConfirmPasswordInput.value;
+                const role = userRoleSelect.value;
+                const isActive = userIsActiveSelect.value;
+
+                if (!username || !fullName || !role) {
+                    userFormErrorMessage.textContent = 'Usuario, Nombre Completo y Rol son obligatorios.';
+                    return;
+                }
+                
+                let userData = { username, full_name: fullName, role, is_active: isActive === '1' };
+
+                if (password) { // Password is being set or changed
+                    if (password !== confirmPassword) {
+                        userFormErrorMessage.textContent = 'Las contraseñas no coinciden.';
+                        return;
+                    }
+                    if (password.length < 6) {
+                        userFormErrorMessage.textContent = 'La contraseña debe tener al menos 6 caracteres.';
+                        return;
+                    }
+                    userData.password = password;
+                } else if (!userId) { // New user, password is required
+                     userFormErrorMessage.textContent = 'La contraseña es obligatoria para nuevos usuarios.';
+                     return;
+                }
+
+
+                try {
+                    let result;
+                    if (userId) {
+                        result = await window.electronAPI.updateUser(userId, userData);
+                    } else {
+                        result = await window.electronAPI.registerUser(userData); // Changed from addUser for consistency
+                    }
+
+                    if (result.success) {
+                        showAppMessage(result.message || 'Usuario guardado exitosamente.', 'success');
+                        closeUserModal();
+                        await loadUsersTable();
+                    } else {
+                        userFormErrorMessage.textContent = result.message || 'Error al guardar el usuario.';
+                    }
+                } catch (error) {
+                    console.error("Error guardando usuario:", error);
+                    userFormErrorMessage.textContent = 'Error de comunicación al guardar usuario.';
+                }
+            });
+        }
+
+        if (usersTableBody) {
+            usersTableBody.addEventListener('click', async (e) => {
+                const targetButton = e.target.closest('button[data-id]');
+                if (!targetButton) return;
+                const userId = targetButton.dataset.id;
+
+                if (targetButton.classList.contains('btn-edit-user')) {
+                    try {
+                        const result = await window.electronAPI.getUserById(userId);
+                        if (result.success && result.data) {
+                            openUserModal(result.data);
+                        } else {
+                            showAppMessage(result.message || 'Error obteniendo datos del usuario.', 'error');
+                        }
+                    } catch (error) {
+                        showAppMessage(`Error de comunicación: ${error.message}`, 'error');
+                    }
+                } else if (targetButton.classList.contains('btn-deactivate-user')) {
+                    if (confirm(`¿Está seguro de que desea DESACTIVAR al usuario?`)) {
+                        try {
+                            const result = await window.electronAPI.updateUser(userId, { is_active: false });
+                            showAppMessage(result.message || 'Usuario desactivado.', result.success ? 'success' : 'error');
+                            if (result.success) await loadUsersTable();
+                        } catch (error) {
+                            showAppMessage(`Error de comunicación: ${error.message}`, 'error');
+                        }
+                    }
+                } else if (targetButton.classList.contains('btn-reactivate-user')) {
+                     if (confirm(`¿Está seguro de que desea REACTIVAR al usuario?`)) {
+                        try {
+                            const result = await window.electronAPI.updateUser(userId, { is_active: true });
+                            showAppMessage(result.message || 'Usuario reactivado.', result.success ? 'success' : 'error');
+                            if (result.success) await loadUsersTable();
+                        } catch (error) {
+                            showAppMessage(`Error de comunicación: ${error.message}`, 'error');
+                        }
+                    }
+                }
+            });
+        }
+        
+        if (btnBackupData) { 
+            btnBackupData.addEventListener('click', async () => {
+                if (!backupRestoreMessage) {
+                    console.error("Elemento backupRestoreMessage no encontrado.");
+                    return;
+                }
+                backupRestoreMessage.textContent = 'Iniciando proceso de copia de seguridad...';
+                backupRestoreMessage.className = 'status-message info';
+                try {
+                    const result = await window.electronAPI.performBackup();
+                    if (result.success) {
+                        backupRestoreMessage.textContent = result.message || 'Copia de seguridad creada exitosamente.';
+                        backupRestoreMessage.className = 'status-message success';
+                    } else {
+                        backupRestoreMessage.textContent = result.message || 'Falló la creación de la copia de seguridad o fue cancelada.';
+                        backupRestoreMessage.className = 'status-message error';
+                    }
+                } catch (error) {
+                    console.error("Error durante la copia de seguridad:", error);
+                    backupRestoreMessage.textContent = `Error: ${error.message}`;
+                    backupRestoreMessage.className = 'status-message error';
+                }
+            }); 
+        }
+        if (btnRestoreData) { 
+            btnRestoreData.addEventListener('click', async () => {
+                const backupRestoreMessage = document.getElementById('backup-restore-message');
+                if (!backupRestoreMessage) {
+                    console.error("Elemento backupRestoreMessage no encontrado.");
+                    return;
+                }
+
+                if (!confirm("¿Está SEGURO de que desea restaurar la base de datos desde una copia de seguridad? Esta acción SOBREESCRIBIRÁ todos los datos actuales y NO SE PUEDE DESHACER. Se recomienda hacer una copia de seguridad actual primero si no lo ha hecho.")) {
+                    backupRestoreMessage.textContent = 'Restauración cancelada por el usuario.';
+                    backupRestoreMessage.className = 'status-message info';
+                    return;
+                }
+
+                backupRestoreMessage.textContent = 'Iniciando proceso de restauración...';
+                backupRestoreMessage.className = 'status-message info';
+
+                try {
+                    const result = await window.electronAPI.performRestore(); // This will be defined in preload.js
+                    if (result.success) {
+                        backupRestoreMessage.textContent = result.message || 'Restauración completada exitosamente. Se recomienda reiniciar la aplicación.';
+                        backupRestoreMessage.className = 'status-message success';
+                        if (result.needsRestart) {
+                            alert("Restauración completada. Por favor, cierre y vuelva a abrir la aplicación para asegurar que todos los cambios tomen efecto.");
+                        }
+                    } else {
+                        backupRestoreMessage.textContent = result.message || 'Falló la restauración o fue cancelada.';
+                        backupRestoreMessage.className = 'status-message error';
+                    }
+                } catch (error) {
+                    console.error("Error durante la restauración:", error);
+                    backupRestoreMessage.textContent = `Error: ${error.message}`;
+                    backupRestoreMessage.className = 'status-message error';
+                }
+            });
+        }
     }
     
     // --- SECCIÓN GESTIÓN DE PRÉSTAMOS ---
@@ -582,8 +896,141 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (btnCancelLoanForm_LoanModule) btnCancelLoanForm_LoanModule.addEventListener('click', closeLoanModal_LoanModule);
         if (loanTypeSelect_LoanModule) loanTypeSelect_LoanModule.addEventListener('change', updateLoanFormHints_LoanModule);
         if (linkToClientsPage_LoanModule) { linkToClientsPage_LoanModule.addEventListener('click', (e) => { e.preventDefault(); closeLoanModal_LoanModule(); document.querySelector('.sidebar-menu a[data-page="clients"]').click(); }); }
-        if (btnPreviewLoanInstallments_LoanModule) { btnPreviewLoanInstallments_LoanModule.addEventListener('click', async () => { /* ... (código Fase 4 con await para formatDateForDisplay) ... */ }); }
-        if (loanForm_LoanModule) { loanForm_LoanModule.addEventListener('submit', async (e) => { /* ... (código Fase 4 con showAppMessage) ... */ }); }
+        if (btnPreviewLoanInstallments_LoanModule) {
+            btnPreviewLoanInstallments_LoanModule.addEventListener('click', async () => {
+                loanInstallmentsPreviewTbody_LoanModule.innerHTML = '<tr><td colspan="3" style="text-align:center;">Calculando...</td></tr>';
+                previewTotalInterest_LoanModule.textContent = '-';
+                previewTotalAmountDue_LoanModule.textContent = '-';
+                previewInstallmentAmount_LoanModule.textContent = '-';
+                previewNumInstallments_LoanModule.textContent = '-';
+                loanFormErrorMessage_LoanModule.textContent = '';
+
+                const principal = parseFloat(loanPrincipalAmountInput_LoanModule.value);
+                const interestRate = parseFloat(loanInterestRateInput_LoanModule.value) / 100;
+                const term = parseInt(loanTermDurationInput_LoanModule.value);
+                const loanType = loanTypeSelect_LoanModule.value;
+                const startDate = loanStartDateInput_LoanModule.value;
+                
+                let fixedInstallmentAmount = null;
+                const fixedInstallmentAmountValue = loanFixedInstallmentAmountInput_LoanModule.value.trim();
+
+                if (loanType === 'daily' && fixedInstallmentAmountValue !== '') {
+                    fixedInstallmentAmount = parseFloat(fixedInstallmentAmountValue);
+                    if (isNaN(fixedInstallmentAmount)) {
+                        loanFormErrorMessage_LoanModule.textContent = 'Monto de cuota fija inválido. Debe ser un número.';
+                        loanInstallmentsPreviewTbody_LoanModule.innerHTML = '<tr><td colspan="3" style="text-align:center;">Datos inválidos.</td></tr>';
+                        return;
+                    }
+                     if (fixedInstallmentAmount <= 0) {
+                        loanFormErrorMessage_LoanModule.textContent = 'Monto de cuota fija debe ser mayor a cero.';
+                        loanInstallmentsPreviewTbody_LoanModule.innerHTML = '<tr><td colspan="3" style="text-align:center;">Datos inválidos.</td></tr>';
+                        return;
+                    }
+                }
+
+                if (isNaN(principal) || principal <= 0 || isNaN(interestRate) || interestRate < 0 || isNaN(term) || term <= 0 || !loanType || !startDate) {
+                    loanFormErrorMessage_LoanModule.textContent = "Por favor, complete todos los campos obligatorios (*) del préstamo con valores válidos para calcular las cuotas.";
+                    loanInstallmentsPreviewTbody_LoanModule.innerHTML = '<tr><td colspan="3" style="text-align:center;">Datos incompletos o inválidos.</td></tr>';
+                    return;
+                }
+
+                const params = { principal, interestRate, term, loanType, startDate, fixedInstallmentAmount };
+                // Ensure fixedInstallmentAmount is explicitly null if it ended up as NaN (e.g., empty input for daily)
+                if (isNaN(params.fixedInstallmentAmount)) {
+                    params.fixedInstallmentAmount = null;
+                }
+
+                try {
+                    const result = await window.electronAPI.calculateLoanDetails(params);
+                    if (result.success && result.data) {
+                        const details = result.data;
+                        loanInstallmentsPreviewTbody_LoanModule.innerHTML = ''; // Clear "Calculando..."
+                        for (const inst of details.installments) {
+                            const row = loanInstallmentsPreviewTbody_LoanModule.insertRow();
+                            row.innerHTML = `<td>${inst.installment_number}</td><td>${await formatDateForDisplay(inst.due_date)}</td><td>${formatCurrency(inst.amount_due)}</td>`;
+                        }
+                        previewTotalInterest_LoanModule.textContent = formatCurrency(details.totalInterest);
+                        previewTotalAmountDue_LoanModule.textContent = formatCurrency(details.totalAmountDue);
+                        previewInstallmentAmount_LoanModule.textContent = formatCurrency(details.actualInstallmentAmount);
+                        previewNumInstallments_LoanModule.textContent = details.numberOfInstallments;
+                    } else {
+                        const errorMessage = result.message || 'Error al calcular detalles.';
+                        loanInstallmentsPreviewTbody_LoanModule.innerHTML = `<tr><td colspan="3" style="text-align:center;">${errorMessage}</td></tr>`;
+                        loanFormErrorMessage_LoanModule.textContent = errorMessage;
+                    }
+                } catch (error) {
+                    console.error("Error calculando vista previa préstamo:", error);
+                    loanInstallmentsPreviewTbody_LoanModule.innerHTML = '<tr><td colspan="3" style="text-align:center;">Error de comunicación al calcular.</td></tr>';
+                    loanFormErrorMessage_LoanModule.textContent = 'Error de comunicación al calcular detalles del préstamo.';
+                }
+            });
+        }
+        if (loanForm_LoanModule) { 
+            loanForm_LoanModule.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                loanFormErrorMessage_LoanModule.textContent = '';
+
+                const clientId = loanClientSelect_LoanModule.value;
+                const loanType = loanTypeSelect_LoanModule.value;
+                const principalAmount = parseFloat(loanPrincipalAmountInput_LoanModule.value);
+                const interestRate = parseFloat(loanInterestRateInput_LoanModule.value) / 100; // API expects rate, not percentage
+                const termDuration = parseInt(loanTermDurationInput_LoanModule.value);
+                const startDate = loanStartDateInput_LoanModule.value;
+                const fixedInstallmentAmountValue = loanFixedInstallmentAmountInput_LoanModule.value;
+                let fixedInstallmentAmount = (loanType === 'daily' && fixedInstallmentAmountValue.trim() !== '') ? parseFloat(fixedInstallmentAmountValue) : null;
+                
+                const guarantorFirstName = loanGuarantorFirstNameInput_LoanModule.value.trim();
+                const guarantorLastName = loanGuarantorLastNameInput_LoanModule.value.trim();
+                const guarantorDni = loanGuarantorDniInput_LoanModule.value.trim();
+                const guarantorPhone = loanGuarantorPhoneInput_LoanModule.value.trim();
+                const guarantorAddress = loanGuarantorAddressInput_LoanModule.value.trim();
+                const notes = loanNotesInput_LoanModule.value.trim();
+
+                // Input Validation
+                if (!clientId || !loanType || isNaN(principalAmount) || principalAmount <= 0 || isNaN(interestRate) || interestRate < 0 || isNaN(termDuration) || termDuration <= 0 || !startDate) {
+                    loanFormErrorMessage_LoanModule.textContent = 'Complete todos los campos obligatorios (*) con valores válidos.';
+                    return;
+                }
+                if (loanType === 'daily' && fixedInstallmentAmountValue.trim() !== '' && (isNaN(fixedInstallmentAmount) || fixedInstallmentAmount <= 0)) {
+                    loanFormErrorMessage_LoanModule.textContent = 'Monto de cuota fija inválido. Debe ser un número positivo si se especifica.';
+                    return;
+                }
+                if (guarantorDni && !/^\d{7,8}$/.test(guarantorDni)) {
+                    loanFormErrorMessage_LoanModule.textContent = 'DNI del garante inválido (7-8 números).';
+                    return;
+                }
+
+                const loanData = {
+                    client_id: clientId,
+                    loan_type: loanType,
+                    principal_amount: principalAmount,
+                    interest_rate: interestRate,
+                    term_duration: termDuration,
+                    start_date: startDate,
+                    fixed_installment_amount: (isNaN(fixedInstallmentAmount)) ? null : fixedInstallmentAmount,
+                    guarantor_first_name: guarantorFirstName || null,
+                    guarantor_last_name: guarantorLastName || null,
+                    guarantor_dni: guarantorDni || null,
+                    guarantor_phone: guarantorPhone || null,
+                    guarantor_address: guarantorAddress || null,
+                    notes: notes || null
+                };
+
+                try {
+                    const result = await window.electronAPI.registerLoan(loanData);
+                    if (result.success) {
+                        showAppMessage(result.message || 'Préstamo registrado exitosamente.', 'success');
+                        closeLoanModal_LoanModule();
+                        await loadLoans_LoanModule(); // Refresh the loans list
+                    } else {
+                        loanFormErrorMessage_LoanModule.textContent = result.message || 'Error al registrar el préstamo.';
+                    }
+                } catch (error) {
+                    console.error("Error registrando préstamo:", error);
+                    loanFormErrorMessage_LoanModule.textContent = `Error de comunicación: ${error.message}`;
+                }
+            }); 
+        }
         if (btnApplyLoanFilters_LoanModule) btnApplyLoanFilters_LoanModule.addEventListener('click', async () => await loadLoans_LoanModule());
         if (btnClearLoanFilters_LoanModule) { btnClearLoanFilters_LoanModule.addEventListener('click', async () => { searchLoanClientDniInput_LoanModule.value = ''; filterLoanTypeSelect_LoanModule.value = ''; filterLoanStatusSelect_LoanModule.value = ''; await loadLoans_LoanModule(); }); }
         if (loansTableBody_LoanModule) { loansTableBody_LoanModule.addEventListener('click', async (e) => { const target = e.target.closest('button'); if(!target) return; if (target.classList.contains('btn-view-loan-details')) { const loanId = target.dataset.id; await openLoanDetailsModal_LoanModule(loanId); } }); }
@@ -705,18 +1152,282 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (paymentHistoryDateToInput_PayModule) paymentHistoryDateToInput_PayModule.value = (await window.electronAPI.getCurrentDateTimeISO()).split('T')[0];
             if (paymentHistoryDateFromInput_PayModule) paymentHistoryDateFromInput_PayModule.value = (await window.electronAPI.addOrSubtractDaysISO((await window.electronAPI.getCurrentDateTimeISO()), 30, 'minus'));
         }
-        async function searchLoansForPayment_PayModule() { /* ... (código Fase 6 con await para formatDateForDisplay) ... */ }
+        async function searchLoansForPayment_PayModule() {
+            const clientDniQuery = paymentSearchClientDniInput_PayModule.value.trim();
+            const loanIdQuery = paymentSearchLoanIdInput_PayModule.value.trim();
+
+            pendingInstallmentsListDiv_PayModule.innerHTML = '';
+            noPendingInstallmentsMessage_PayModule.style.display = 'none';
+            let loansToProcess = [];
+            let pendingInstallmentsFound = false;
+
+            try {
+                if (loanIdQuery) {
+                    const loanId = parseInt(loanIdQuery);
+                    if (!isNaN(loanId) && loanId > 0) {
+                        const result = await window.electronAPI.getLoanById(loanId);
+                        if (result.success && result.data) {
+                            loansToProcess.push(result.data);
+                        } else {
+                            noPendingInstallmentsMessage_PayModule.textContent = result.message || "Préstamo no encontrado.";
+                            noPendingInstallmentsMessage_PayModule.style.display = 'block';
+                            return;
+                        }
+                    } else {
+                        noPendingInstallmentsMessage_PayModule.textContent = "ID de Préstamo inválido.";
+                        noPendingInstallmentsMessage_PayModule.style.display = 'block';
+                        return;
+                    }
+                } else if (clientDniQuery) {
+                    const clientsResult = await window.electronAPI.getAllClients(false); // Get all clients, active or not
+                    if (clientsResult.success && clientsResult.data) {
+                        const foundClient = clientsResult.data.find(c => c.dni === clientDniQuery);
+                        if (foundClient) {
+                            // Fetch all loans for the client, then filter client-side by status
+                            const loansResult = await window.electronAPI.getAllLoans({ clientId: foundClient.id });
+                            if (loansResult.success && loansResult.data) {
+                                loansToProcess = loansResult.data.filter(loan => ['active', 'overdue'].includes(loan.status));
+                                if (loansToProcess.length === 0) {
+                                    noPendingInstallmentsMessage_PayModule.textContent = `No se encontraron préstamos activos o vencidos para el DNI ${clientDniQuery}.`;
+                                    noPendingInstallmentsMessage_PayModule.style.display = 'block';
+                                    return;
+                                }
+                            } else {
+                                noPendingInstallmentsMessage_PayModule.textContent = loansResult.message || `No se encontraron préstamos para el DNI ${clientDniQuery}.`;
+                                noPendingInstallmentsMessage_PayModule.style.display = 'block';
+                                return;
+                            }
+                        } else {
+                            noPendingInstallmentsMessage_PayModule.textContent = `Cliente con DNI ${clientDniQuery} no encontrado.`;
+                            noPendingInstallmentsMessage_PayModule.style.display = 'block';
+                            return;
+                        }
+                    } else {
+                        noPendingInstallmentsMessage_PayModule.textContent = clientsResult.message || "Error buscando clientes.";
+                        noPendingInstallmentsMessage_PayModule.style.display = 'block';
+                        return;
+                    }
+                } else {
+                    noPendingInstallmentsMessage_PayModule.textContent = "Ingrese DNI o ID de Préstamo para buscar.";
+                    noPendingInstallmentsMessage_PayModule.style.display = 'block';
+                    return;
+                }
+
+                if (loansToProcess.length === 0 && !loanIdQuery) { // If searched by DNI and no relevant loans found
+                     noPendingInstallmentsMessage_PayModule.textContent = "No se encontraron préstamos activos o vencidos para los criterios ingresados.";
+                     noPendingInstallmentsMessage_PayModule.style.display = 'block';
+                     return;
+                }
+                
+                for (const loan of loansToProcess) {
+                    // Ensure we have client details, which should be included by getAllLoans and getLoanById
+                    const clientName = `${loan.client_first_name || 'N/A'} ${loan.client_last_name || ''}`.trim();
+                    const clientDni = loan.client_dni || 'N/A';
+
+                    // If loan.installments is not directly available from getAllLoans, refetch.
+                    // However, getLoanById (used for single loan search) includes them.
+                    // Assume for now that if loansToProcess has items, they have installments or we need to fetch them.
+                    // The prompt for getLoanById implies installments are present.
+                    // For getAllLoans, if they are not present, an additional fetch would be needed here.
+                    // For simplicity, let's assume loan.installments is available if the loan object itself is.
+                    // If not, this part would need:
+                    // let detailedLoan = loan; 
+                    // if (!detailedLoan.installments) { 
+                    //    const detRes = await window.electronAPI.getLoanById(loan.id);
+                    //    if (detRes.success && detRes.data) detailedLoan = detRes.data; else continue; 
+                    // }
+                    // And then use detailedLoan.installments
+                    
+                    let loanHasPendingInstallments = false;
+                    if (loan.installments && loan.installments.length > 0) {
+                        for (const inst of loan.installments) {
+                            if (inst.status !== 'paid') {
+                                pendingInstallmentsFound = true;
+                                loanHasPendingInstallments = true;
+                                const amountPaid = parseFloat(inst.amount_paid || 0);
+                                const amountDue = parseFloat(inst.amount_due);
+                                const remainingAmount = amountDue - amountPaid;
+
+                                const installmentItemHtml = `
+                                    <div class="installment-item">
+                                        <div class="installment-item-header">
+                                            <h5>Préstamo #${loan.id} - Cuota ${inst.installment_number}</h5>
+                                        </div>
+                                        <div class="installment-item-body">
+                                            <p><strong>Cliente:</strong> ${clientName} (DNI: ${clientDni})</p>
+                                            <p><strong>Vencimiento:</strong> ${await formatDateForDisplay(inst.due_date)}</p>
+                                            <p><strong>Monto Cuota:</strong> ${formatCurrency(amountDue)}</p>
+                                            <p><strong>Pagado:</strong> ${formatCurrency(amountPaid)}</p>
+                                            <p><strong>Pendiente Cuota:</strong> ${formatCurrency(remainingAmount)}</p>
+                                            <p><strong>Estado Cuota:</strong> <span class="status-${inst.status}">${translateInstallmentStatus(inst.status)}</span></p>
+                                        </div>
+                                        <div class="installment-item-footer">
+                                            <button class="btn btn-sm btn-success btn-record-payment-for-installment" data-installment-id="${inst.id}">Registrar Pago</button>
+                                        </div>
+                                    </div>
+                                `;
+                                pendingInstallmentsListDiv_PayModule.innerHTML += installmentItemHtml;
+                            }
+                        }
+                    }
+                     if (loanHasPendingInstallments && loanIdQuery && loansToProcess.length === 1) { // If searched by Loan ID and it has pending installments
+                        // message already handled by pendingInstallmentsFound flag later
+                    }
+                }
+
+                if (!pendingInstallmentsFound) {
+                    noPendingInstallmentsMessage_PayModule.textContent = "No se encontraron cuotas pendientes para los criterios de búsqueda.";
+                    noPendingInstallmentsMessage_PayModule.style.display = 'block';
+                }
+
+            } catch (error) {
+                console.error('Error buscando préstamos para pago:', error);
+                noPendingInstallmentsMessage_PayModule.textContent = `Error al buscar: ${error.message || 'Error de comunicación.'}`;
+                noPendingInstallmentsMessage_PayModule.style.display = 'block';
+            }
+        }
         async function openRecordPaymentModal_PayModule(installmentId) { /* ... (código Fase 6 con await para formatDateForDisplay y usando DEFAULT_DAILY_ARREARS_RATE_PayModule) ... */ }
         function closeRecordPaymentModal_PayModule() { /* ... (código Fase 6) ... */ }
-        async function loadPaymentHistory_PayModule() { /* ... (código Fase 6 con await para formatDateTimeForDisplay) ... */ }
+        async function loadPaymentHistory_PayModule() {
+            const dateFrom = paymentHistoryDateFromInput_PayModule.value;
+            const dateTo = paymentHistoryDateToInput_PayModule.value;
+            const clientDniQuery = paymentSearchClientDniInput_PayModule.value.trim(); // DNI from the same input as pending search
+            const loanIdString = paymentSearchLoanIdInput_PayModule.value.trim(); // Loan ID from the same input as pending search
+
+            let filters = {};
+            if (dateFrom) filters.dateFrom = dateFrom;
+            if (dateTo) filters.dateTo = dateTo;
+
+            paymentHistoryTbody_PayModule.innerHTML = '<tr><td colspan="8" style="text-align:center;">Procesando filtros...</td></tr>';
+
+            try {
+                const loanId = parseInt(loanIdString);
+                if (!isNaN(loanId) && loanId > 0) {
+                    filters.loanId = loanId;
+                } else if (clientDniQuery) {
+                    paymentHistoryTbody_PayModule.innerHTML = '<tr><td colspan="8" style="text-align:center;">Buscando cliente...</td></tr>';
+                    const clientsResult = await window.electronAPI.getAllClients(false); // Get all clients (active/inactive)
+                    if (clientsResult.success && clientsResult.data) {
+                        const foundClient = clientsResult.data.find(c => c.dni === clientDniQuery);
+                        if (foundClient) {
+                            filters.clientId = foundClient.id;
+                        } else {
+                            filters.clientId = -1; // Client DNI specified but not found
+                        }
+                    } else {
+                        // Error fetching clients, proceed without client filter or show error
+                        console.warn("Error buscando clientes para historial de pagos:", clientsResult.message);
+                         filters.clientId = -1; // Fallback to ensure no results if DNI was intended filter
+                    }
+                }
+
+                paymentHistoryTbody_PayModule.innerHTML = '<tr><td colspan="8" style="text-align:center;">Cargando historial...</td></tr>';
+                const result = await window.electronAPI.getAllPayments(filters);
+                paymentHistoryTbody_PayModule.innerHTML = ''; // Clear before populating
+
+                if (result.success && result.data && result.data.length > 0) {
+                    for (const payment of result.data) {
+                        const row = paymentHistoryTbody_PayModule.insertRow();
+                        const clientFullName = `${payment.client_first_name || 'N/A'} ${payment.client_last_name || ''}`.trim();
+                        const clientDniDisplay = payment.client_dni || 'N/A';
+                        
+                        row.innerHTML = `
+                            <td>${payment.id}</td>
+                            <td>${await formatDateTimeForDisplay(payment.payment_date)}</td>
+                            <td>${clientFullName} (${clientDniDisplay})</td>
+                            <td>${payment.loan_id}</td>
+                            <td>${payment.installment_number !== null ? payment.installment_number : 'N/A'}</td>
+                            <td>${formatCurrency(payment.payment_amount)}</td>
+                            <td>${payment.created_by_username || 'N/A'}</td>
+                            <td>
+                                ${payment.receipt_full_path ? 
+                                    `<button class="btn btn-sm btn-info btn-open-receipt" data-path="${payment.receipt_full_path}">Ver</button>` : 
+                                    'N/A'}
+                            </td>
+                        `;
+                    }
+                } else {
+                    paymentHistoryTbody_PayModule.innerHTML = '<tr><td colspan="8" style="text-align:center;">No hay pagos para los filtros aplicados.</td></tr>';
+                }
+            } catch (error) {
+                console.error('Error cargando historial de pagos:', error);
+                paymentHistoryTbody_PayModule.innerHTML = `<tr><td colspan="8" style="text-align:center;">Error al cargar historial: ${error.message || 'Error de comunicación.'}</td></tr>`;
+            }
+        }
 
         if (btnPaymentSearchLoans_PayModule) btnPaymentSearchLoans_PayModule.addEventListener('click', async () => await searchLoansForPayment_PayModule());
         if (pendingInstallmentsListDiv_PayModule) { pendingInstallmentsListDiv_PayModule.addEventListener('click', async (e) => { /* ... (código Fase 6) ... */ }); }
         if (recordPaymentModalCloseBtn_PayModule) recordPaymentModalCloseBtn_PayModule.addEventListener('click', closeRecordPaymentModal_PayModule);
         if (btnCancelRecordPayment_PayModule) btnCancelRecordPayment_PayModule.addEventListener('click', closeRecordPaymentModal_PayModule);
-        if (recordPaymentForm_PayModule) { recordPaymentForm_PayModule.addEventListener('submit', async (e) => { /* ... (código Fase 6 con showAppMessage) ... */ }); }
+        if (recordPaymentForm_PayModule) { 
+            recordPaymentForm_PayModule.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                recordPaymentFormErrorMessage_PayModule.textContent = '';
+
+                const loanInstallmentId = paymentLoanInstallmentIdInput_PayModule.value;
+                const paymentAmount = parseFloat(paymentAmountInput_PayModule.value);
+                const paymentDateISO = paymentDateInput_PayModule.value; // datetime-local input
+                const paymentMethod = paymentMethodSelect_PayModule.value;
+                const notes = paymentNotesInput_PayModule.value.trim();
+
+                if (!loanInstallmentId || isNaN(paymentAmount) || paymentAmount <= 0 || !paymentDateISO) {
+                    recordPaymentFormErrorMessage_PayModule.textContent = 'Complete todos los campos obligatorios (*) con valores válidos.';
+                    return;
+                }
+                
+                // Consider using Luxon here if precise ISO 8601 with timezone is needed by backend
+                // For now, assuming backend handles the datetime-local format (YYYY-MM-DDTHH:MM)
+                // or that Luxon on backend `DateTime.fromISO` can parse it.
+
+                const paymentData = {
+                    loan_installment_id: parseInt(loanInstallmentId),
+                    payment_amount: paymentAmount,
+                    payment_date_iso: paymentDateISO,
+                    payment_method: paymentMethod || null,
+                    notes: notes || null
+                };
+
+                try {
+                    const result = await window.electronAPI.recordPayment(paymentData);
+                    if (result.success) {
+                        showAppMessage(result.message || 'Pago registrado exitosamente.', 'success');
+                        closeRecordPaymentModal_PayModule(); // Assumed to be implemented
+                        await searchLoansForPayment_PayModule(); // Refresh pending installments
+                        await loadPaymentHistory_PayModule();   // Refresh payment history
+
+                        if (result.receiptPath) {
+                            if (confirm(`Recibo generado: ${result.receiptPath}\n¿Desea abrirlo?`)) {
+                                await window.electronAPI.openFile(result.receiptPath);
+                            }
+                        }
+                    } else {
+                        recordPaymentFormErrorMessage_PayModule.textContent = result.message || 'Error al registrar el pago.';
+                    }
+                } catch (error) {
+                    console.error("Error registrando pago:", error);
+                    recordPaymentFormErrorMessage_PayModule.textContent = `Error de comunicación: ${error.message}`;
+                }
+            }); 
+        }
         if (btnFilterPaymentHistory_PayModule) btnFilterPaymentHistory_PayModule.addEventListener('click', async () => await loadPaymentHistory_PayModule());
-        if (paymentHistoryTbody_PayModule) { paymentHistoryTbody_PayModule.addEventListener('click', async (e) => { /* ... (código Fase 6) ... */ }); }
+        if (paymentHistoryTbody_PayModule) { 
+            paymentHistoryTbody_PayModule.addEventListener('click', async (e) => {
+                const targetButton = e.target.closest('button.btn-open-receipt');
+                if (targetButton) {
+                    const filePath = targetButton.dataset.path;
+                    if (filePath && filePath !== 'null' && filePath !== 'undefined') {
+                        try {
+                            await window.electronAPI.openFile(filePath);
+                        } catch (error) {
+                            console.error('Error opening receipt file:', error);
+                            showAppMessage(`No se pudo abrir el recibo: ${error.message}`, 'error');
+                        }
+                    } else {
+                        showAppMessage('Recibo no disponible o ruta inválida.', 'warning');
+                    }
+                }
+            }); 
+        }
     }
     
     // --- SECCIÓN REPORTES ---

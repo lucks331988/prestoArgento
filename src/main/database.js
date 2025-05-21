@@ -226,5 +226,22 @@ module.exports = {
     initDatabase,
     get,
     all,
-    run
+    run,
+    getDBFilePath: () => dbPath, // Added function to get DB path
+    closeDatabase: () => { // Added function to close DB
+        return new Promise((resolve, reject) => {
+            if (db && db.open) {
+                db.close((err) => {
+                    if (err) {
+                        console.error('Error closing the database:', err.message);
+                        return reject(err);
+                    }
+                    console.log('Database connection closed.');
+                    resolve(true);
+                });
+            } else {
+                resolve(false); // DB already closed or not initialized
+            }
+        });
+    }
 };

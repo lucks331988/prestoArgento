@@ -52,8 +52,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     calculateArrears: (installmentId, dailyArrearsRate) => ipcRenderer.invoke('payments:calculate-arrears', installmentId, dailyArrearsRate),
     
     // --- Backup y Restauración ---
-    backupData: () => ipcRenderer.invoke('settings:backup'),
-    restoreData: () => ipcRenderer.invoke('settings:restore'),
+    // backupData: () => ipcRenderer.invoke('settings:backup'), // Old one
+    performBackup: () => ipcRenderer.invoke('perform-backup'), // New one
+    // restoreData: () => ipcRenderer.invoke('settings:restore'), // Old one, if it existed by this name
+    performRestore: () => ipcRenderer.invoke('perform-restore'), // New one for restore
 
     // --- Reportes ---
     getReportData: (reportType, filters) => ipcRenderer.invoke('reports:get-data', reportType, filters),
