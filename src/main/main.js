@@ -351,6 +351,14 @@ ipcMain.handle('loans:update-status', async (event, loanId, newStatus) => {
     return await loanManager.updateLoanStatus(loanId, newStatus, currentUser.id);
 });
 ipcMain.handle('loans:generate-contract', async (event, loanId) => await loanManager.generateLoanContract(loanId));
+ipcMain.handle('loans:get-pending-installments', async (event, filters) => {
+    try {
+        return await loanManager.getLoansWithPendingInstallments(filters);
+    } catch (error) {
+        console.error('Error en loans:get-pending-installments IPC:', error);
+        return { success: false, message: `Error interno: ${error.message}` };
+    }
+});
 
 // Gestión de Pagos
 ipcMain.handle('payments:record', async (event, paymentData) => {

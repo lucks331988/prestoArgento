@@ -45,6 +45,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getLoanById: (loanId) => ipcRenderer.invoke('loans:get-by-id', loanId),
     updateLoanStatus: (loanId, newStatus) => ipcRenderer.invoke('loans:update-status', loanId, newStatus),
     generateLoanContract: (loanId) => ipcRenderer.invoke('loans:generate-contract', loanId),
+    getLoansWithPendingInstallments: (filters) => ipcRenderer.invoke('loans:get-pending-installments', filters),
 
     // --- Gestión de Pagos ---
     recordPayment: (paymentData) => ipcRenderer.invoke('payments:record', paymentData),

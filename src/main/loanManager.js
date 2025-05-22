@@ -419,5 +419,80 @@ module.exports = {
     getAllLoans,
     getLoanById,
     updateLoanStatus,
-    generateLoanContract
+    generateLoanContract,
+    getLoansWithPendingInstallments
 };
+
+async function getLoansWithPendingInstallments({ dni, loanId }) {
+    let loansToProcess = [];
+
+    if (loanId) {
+        const loan = await getLoanById(loanId); // getLoanById already joins client data
+        if (loan) {
+            if (dni && loan.client_dni !== dni) {
+                return { success: true, data: [] }; // Loan ID found, but DNI doesn't match client for that loan
+            }
+            loansToProcess.push(loan);
+        } else {
+            return { success: true, data: [] }; // No loan found for this ID
+        }
+    } else if (dni) {
+        const clientInfo = await dbUtil.get('SELECT id, first_name, last_name, dni FROM clients WHERE dni = ? AND is_active = 1', [dni]);
+        if (!clientInfo) {
+            return { success: true, data: [] }; // No active client found for this DNI
+        }
+        // Get loans for this client that might have pending payments
+        const clientLoans = await getAllLoans({ clientId: clientInfo.id }); 
+        const activeLoanStatuses = ['active', 'overdue', 'defaulted']; // Statuses that can have pending payments
+        const relevantClientLoans = clientLoans.filter(l => activeLoanStatuses.includes(l.status));
+        
+        for (let i = 0; i < relevantClientLoans.length; i++) {
+            const fullLoanDetails = await getLoanById(relevantClientLoans[i].id);
+            if (fullLoanDetails) { // Ensure loan details were fetched
+                loansToProcess.push(fullLoanDetails);
+            }
+        }
+    } else {
+        return { success: false, message: "Debe proporcionar DNI del cliente o ID del Préstamo para la búsqueda." };
+    }
+
+    if (!loansToProcess || loansToProcess.length === 0) {
+        return { success: true, data: [] };
+    }
+
+    const resultData = [];
+    // Define statuses that are considered pending or not fully paid
+    const pendingStatuses = ['pending', 'partially_paid', 'overdue']; 
+
+    for (const loan of loansToProcess) {
+        if (!loan || !loan.installments || !loan.client_first_name) { // Ensure loan object is complete
+             console.warn(`Skipping loan due to incomplete data: loanId ${loan ? loan.id : 'unknown'}`);
+             continue;
+        }
+
+        const pendingInstallmentsList = loan.installments.filter(inst => {
+            const isStatusPending = pendingStatuses.includes(inst.status);
+            // Also check if amount_paid is less than amount_due, even if status somehow became 'paid' erroneously
+            const isNotFullyPaid = parseFloat(inst.amount_paid || 0) < parseFloat(inst.amount_due);
+            return inst.status !== 'paid' && (isStatusPending || isNotFullyPaid);
+        }).map(inst => ({
+            id: inst.id,
+            installment_number: inst.installment_number,
+            due_date: inst.due_date,
+            amount_due: parseFloat(inst.amount_due),
+            amount_paid: parseFloat(inst.amount_paid || 0),
+            status: inst.status // Keep original status for display
+        }));
+
+        if (pendingInstallmentsList.length > 0) {
+            resultData.push({
+                loan_id: loan.id,
+                client_first_name: loan.client_first_name,
+                client_last_name: loan.client_last_name,
+                client_dni: loan.client_dni,
+                pending_installments: pendingInstallmentsList
+            });
+        }
+    }
+    return { success: true, data: resultData };
+}

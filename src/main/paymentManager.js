@@ -31,51 +31,94 @@ const printer = new PdfPrinter(fonts);
 
 /**
  * Genera un recibo de pago en PDF.
- * @param {object} paymentDetails - { payment_id, loan_id, client_name, client_dni, installment_number, payment_amount, payment_date_iso, notes }
- * @param {object} companyInfo - { name, address, phone, cuit }
+ * @param {object} paymentDetails - { payment_id, client_name, client_dni, payment_amount, payment_date_iso, payment_method, notes }
+ * @param {object} loanDetails - { id, year, principal_amount, number_of_installments, installment_amount }
+ * @param {object} installmentDetails - { installment_number, due_date, amount_due, interest_on_arrears }
+ * @param {object} companyInfo - { name, cuit, address, phone, email }
+ * @param {string} operatorUsername - Nombre del usuario operador.
  * @returns {Promise<string|null>} - Ruta al archivo PDF generado o null en caso de error.
  */
-async function generatePaymentReceipt(paymentDetails, companyInfo) {
-    const loanReceiptDir = path.join(receiptsBasePath, `loan_${paymentDetails.loan_id}`);
+async function generatePaymentReceipt(paymentDetails, loanDetails, installmentDetails, companyInfo, operatorUsername) {
+    const loanReceiptDir = path.join(receiptsBasePath, `loan_${loanDetails.id}`);
     if (!fs.existsSync(loanReceiptDir)) {
         fs.mkdirSync(loanReceiptDir, { recursive: true });
     }
     const receiptFileName = `recibo_pago_${paymentDetails.payment_id}_${Date.now()}.pdf`;
     const receiptPath = path.join(loanReceiptDir, receiptFileName);
 
-    const paymentDateFormatted = DateTime.fromISO(paymentDetails.payment_date_iso).toFormat("dd/MM/yyyy HH:mm:ss");
-    const emissionDateFormatted = DateTime.now().toFormat("dd/MM/yyyy HH:mm:ss");
+    const paymentDateOnlyFormatted = DateTime.fromISO(paymentDetails.payment_date_iso).toFormat("dd/MM/yyyy");
+    const paymentTimeFormatted = DateTime.fromISO(paymentDetails.payment_date_iso).toFormat("hh:mm a");
+    const emissionDateTimeFormatted = DateTime.now().toFormat("dd/MM/yyyy HH:mm:ss");
+    const loanNumberFormatted = `PR-${loanDetails.year || new Date().getFullYear()}-${String(loanDetails.id).padStart(5, '0')}`;
+    const installmentDueDateFormatted = DateTime.fromISO(installmentDetails.due_date).toFormat('dd/MM/yyyy');
+
+    const paymentMethodTranslations = {
+        cash: 'Efectivo',
+        transfer: 'Transferencia',
+        debit_card: 'Tarjeta de Débito',
+        credit_card: 'Tarjeta de Crédito',
+        other: 'Otro'
+    };
+    const paymentMethodDisplay = paymentMethodTranslations[paymentDetails.payment_method] || paymentDetails.payment_method || 'No especificado';
 
     const docDefinition = {
         content: [
-            { text: companyInfo.name || 'PRESTO ARGENTO', style: 'header', alignment: 'center' },
-            { text: `Dirección: ${companyInfo.address || 'N/A'} - Tel: ${companyInfo.phone || 'N/A'} - CUIT: ${companyInfo.cuit || 'N/A'}`, style: 'subheader', alignment: 'center', margin: [0,0,0,10] },
-            { text: 'COMPROBANTE DE PAGO', style: 'title', alignment: 'center', margin: [0, 0, 0, 20] },
+            { text: '📄 Comprobante de Pago de Cuota de Préstamo', style: 'mainTitle', alignment: 'center', margin: [0, 0, 0, 20] },
+            
             { text: `Recibo N°: P-${paymentDetails.payment_id}`, alignment: 'right' },
-            { text: `Fecha de Emisión: ${emissionDateFormatted}`, alignment: 'right', margin: [0,0,0,15] },
+            { text: `Fecha de Emisión: ${emissionDateTimeFormatted}`, alignment: 'right', margin: [0, 0, 0, 15] },
 
             { text: 'Datos del Cliente:', style: 'sectionHeader' },
-            { text: `Nombre: ${paymentDetails.client_name}` },
-            { text: `DNI: ${paymentDetails.client_dni}`, margin: [0,0,0,10] },
+            { text: `Nombre del Cliente: ${paymentDetails.client_name}` },
+            { text: `DNI: ${paymentDetails.client_dni}`, margin: [0, 0, 0, 10] },
 
-            { text: 'Detalle del Préstamo y Pago:', style: 'sectionHeader' },
-            { text: `Préstamo N°: ${paymentDetails.loan_id}` },
-            { text: `Cuota N°: ${paymentDetails.installment_number}` },
-            { text: `Fecha de Pago Efectuado: ${paymentDateFormatted}` },
-            { text: `Monto Pagado: ${paymentDetails.payment_amount.toLocaleString('es-AR', { style: 'currency', currency: 'ARS' })}`, style: 'amountPaid', margin: [0,5,0,10] },
-            ...(paymentDetails.notes ? [{text: `Notas del Pago: ${paymentDetails.notes}`, margin: [0,0,0,10]}] : []),
+            { text: 'Información del Préstamo:', style: 'sectionHeader' },
+            { text: `Número de Préstamo: ${loanNumberFormatted}`, margin: [0, 0, 0, 10] },
+
+            { text: '💰 Detalle del Pago:', style: 'sectionHeader' },
+            {
+                ul: [
+                    `Monto Total del Préstamo: ${loanDetails.principal_amount.toLocaleString('es-AR', { style: 'currency', currency: 'ARS' })}`,
+                    `Cuotas Totales: ${loanDetails.number_of_installments}`,
+                    `Cuota N.º: ${installmentDetails.installment_number} de ${loanDetails.number_of_installments}`,
+                    `Monto de la Cuota: ${loanDetails.installment_amount.toLocaleString('es-AR', { style: 'currency', currency: 'ARS' })}`,
+                    `Intereses incluidos: Sí`,
+                    `Fecha de Vencimiento de la Cuota: ${installmentDueDateFormatted}`,
+                    `Fecha de Pago: ${paymentDateOnlyFormatted}`, // As per spec, though also in header
+                    `Recargo por atraso: ${parseFloat(installmentDetails.interest_on_arrears || 0).toLocaleString('es-AR', { style: 'currency', currency: 'ARS' })}`,
+                    { text: `Monto Total Pagado: ${paymentDetails.payment_amount.toLocaleString('es-AR', { style: 'currency', currency: 'ARS' })}`, style: 'amountPaid', bold: true }
+                ], margin: [0, 0, 0, 10]
+            },
             
-            { text: '_________________________', alignment: 'center', margin: [0, 40, 0, 0] },
-            { text: 'Firma y Aclaración (Prestamista)', alignment: 'center' },
+            { text: 'Forma de Pago:', style: 'sectionHeaderNoMargin' },
+            { text: paymentMethodDisplay, margin: [0,0,0,10]},
+
+            { text: 'Operador:', style: 'sectionHeaderNoMargin' },
+            { text: operatorUsername || 'N/A', margin: [0,0,0,10]},
+
+            { text: '✅ Observaciones:', style: 'sectionHeaderNoMargin' },
+            { text: paymentDetails.notes ? `${paymentDetails.notes}\nGracias por su pago. Recuerde conservar este comprobante.` : 'Gracias por su pago. Recuerde conservar este comprobante.', margin: [0,0,0,20] },
+            
+            { text: '💼 Información del Emisor:', style: 'sectionHeader' },
+            { text: `Empresa: ${companyInfo.name || 'Créditos TuAyuda'}` },
+            { text: `CUIT: ${companyInfo.cuit || '30-71589745-4'}` },
+            { text: `Dirección: ${companyInfo.address || 'Av. San Martín 456, El Colorado, Formosa'}` },
+            { text: `Teléfono: ${companyInfo.phone || '(370) 123-4567'}` },
+            { text: `Email: ${companyInfo.email || 'contacto@tuayuda.com'}`, margin: [0,0,0,25] },
+            
+            { text: '_________________________', alignment: 'center', margin: [0, 20, 0, 0] },
+            { text: 'Firma y Aclaración (Emisor)', alignment: 'center' },
         ],
         styles: {
-            header: { fontSize: 18, bold: true },
-            subheader: { fontSize: 9, italics: true },
-            title: { fontSize: 16, bold: true },
+            mainTitle: { fontSize: 18, bold: true },
+            header: { fontSize: 16, bold: true }, // Kept for potential future use
+            subheader: { fontSize: 9, italics: true }, // Kept for potential future use
+            title: { fontSize: 14, bold: true }, // Kept for potential future use
             sectionHeader: { fontSize: 12, bold: true, margin: [0, 10, 0, 5] },
-            amountPaid: { fontSize: 14, bold: true }
+            sectionHeaderNoMargin: { fontSize: 12, bold: true, margin: [0, 0, 0, 2] },
+            amountPaid: { fontSize: 13, bold: true }
         },
-        defaultStyle: { font: 'Roboto', fontSize: 10 }
+        defaultStyle: { font: 'Roboto', fontSize: 10, lineHeight: 1.3 }
     };
 
     try {
@@ -178,26 +221,73 @@ async function recordPayment(paymentData, userId) {
         
         let receiptPath = null;
         try {
-            const clientInfo = await dbUtil.get("SELECT first_name, last_name, dni FROM clients WHERE id = ?", [installment.client_id]);
-            const companyInfoResult = await dbUtil.get("SELECT name, address, phone, cuit FROM company_info WHERE id = 1");
-            const companyInfo = companyInfoResult || {};
+            // Fetch all necessary data for the new receipt format
+            const currentInstallmentDetails = await dbUtil.get(
+                `SELECT id as installment_db_id, loan_id, installment_number, due_date, amount_due, interest_on_arrears 
+                 FROM loan_installments WHERE id = ?`,
+                [loan_installment_id]
+            );
+
+            const loanDetailsFromDb = await dbUtil.get(
+                `SELECT id, client_id, principal_amount, number_of_installments, installment_amount, start_date 
+                 FROM loans WHERE id = ?`,
+                [currentInstallmentDetails.loan_id]
+            );
+
+            const clientDetails = await dbUtil.get(
+                `SELECT first_name, last_name, dni FROM clients WHERE id = ?`,
+                [loanDetailsFromDb.client_id]
+            );
+
+            const companyDetails = await dbUtil.get(
+                `SELECT name, cuit, address, phone, email FROM company_info WHERE id = 1`
+            ) || { name: 'Créditos TuAyuda', cuit: '30-71589745-4', address: 'Av. San Martín 456, El Colorado, Formosa', phone: '(370) 123-4567', email: 'contacto@tuayuda.com' }; // Fallback
             
-            const receiptDetails = {
+            const operatorDetails = await dbUtil.get(
+                `SELECT username FROM users WHERE id = ?`,
+                [userId]
+            ) || { username: 'N/A' }; // Fallback
+
+            // Prepare data structures for generatePaymentReceipt
+            const paymentInfoForReceipt = {
                 payment_id: paymentId,
-                loan_id: installment.loan_main_id,
-                client_name: `${clientInfo.first_name} ${clientInfo.last_name}`,
-                client_dni: clientInfo.dni,
-                installment_number: installment.installment_number,
+                client_name: `${clientDetails.first_name} ${clientDetails.last_name}`,
+                client_dni: clientDetails.dni,
                 payment_amount: payment_amount,
-                payment_date_iso: payment_date_iso, // Usar ISO para DateTime en generatePaymentReceipt
+                payment_date_iso: payment_date_iso,
+                payment_method: payment_method,
                 notes: notes || ''
             };
-            receiptPath = await generatePaymentReceipt(receiptDetails, companyInfo);
+
+            const loanInfoForReceipt = {
+                id: loanDetailsFromDb.id,
+                year: DateTime.fromISO(loanDetailsFromDb.start_date).year,
+                principal_amount: loanDetailsFromDb.principal_amount,
+                number_of_installments: loanDetailsFromDb.number_of_installments,
+                installment_amount: loanDetailsFromDb.installment_amount
+            };
+
+            const installmentInfoForReceipt = {
+                installment_number: currentInstallmentDetails.installment_number,
+                due_date: currentInstallmentDetails.due_date,
+                amount_due: currentInstallmentDetails.amount_due,
+                interest_on_arrears: currentInstallmentDetails.interest_on_arrears || 0
+            };
+            
+            receiptPath = await generatePaymentReceipt(
+                paymentInfoForReceipt, 
+                loanInfoForReceipt, 
+                installmentInfoForReceipt, 
+                companyDetails, 
+                operatorDetails.username
+            );
+
             if (receiptPath) {
                 await dbUtil.run('UPDATE payments SET receipt_path = ? WHERE id = ?', [receiptPath, paymentId]);
             }
         } catch (receiptError) {
-            console.error("Error generando o guardando ruta del recibo:", receiptError);
+            console.error("Error generando o guardando ruta del recibo detallado:", receiptError);
+            // No hacer rollback por error de recibo, el pago ya está en DB.
         }
 
         await dbUtil.run('COMMIT');
