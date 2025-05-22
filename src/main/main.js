@@ -12,6 +12,7 @@ const loanManager = require('./loanManager');
 const paymentManager = require('./paymentManager');
 const settingsManager = require('./settingsManager');
 const reportManager = require('./reportManager');
+const dateUtils = require('./utils'); // Import the new utils
 
 
 // Variables Globales
@@ -364,6 +365,15 @@ ipcMain.handle('payments:get-all', async (event, filters = {}) => {
 ipcMain.handle('payments:calculate-arrears', async (event, installmentId, dailyArrearsRate) => {
     return await paymentManager.calculateArrears(installmentId, dailyArrearsRate);
 });
+ipcMain.handle('payments:get-loans-with-pending-installments', async (event, filters) => {
+    try {
+        const data = await paymentManager.getLoansWithPendingInstallments(filters);
+        return { success: true, data };
+    } catch (error) {
+        console.error('Error en IPC payments:get-loans-with-pending-installments:', error);
+        return { success: false, message: error.message };
+    }
+});
    
 // Backup y Restauración
 ipcMain.handle('settings:backup', async (event) => {
@@ -439,6 +449,21 @@ ipcMain.handle('dialog:showSaveDialog', async (event, options) => {
 ipcMain.handle('dialog:showOpenDialog', async (event, options) => {
     return await dialog.showOpenDialog(BrowserWindow.fromWebContents(event.sender), options);
 });
+
+// Date/Time Utilities from utils.js
+ipcMain.handle('util:formatDate', (event, isoDate, format) => {
+    return dateUtils.formatDate(isoDate, format);
+});
+ipcMain.handle('util:formatDateTime', (event, isoDateTime, format) => {
+    return dateUtils.formatDateTime(isoDateTime, format);
+});
+ipcMain.handle('util:getCurrentDateTimeISO', () => {
+    return dateUtils.getCurrentDateTimeISO();
+});
+ipcMain.handle('util:addOrSubtractDaysISO', (event, isoDate, days, operation) => {
+    return dateUtils.addOrSubtractDaysISO(isoDate, days, operation);
+});
+
 
 // Aceleración por hardware
 app.commandLine.appendSwitch('enable-features', 'VaapiVideoDecoder,VaapiVideoEncoder');

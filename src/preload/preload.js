@@ -50,6 +50,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     recordPayment: (paymentData) => ipcRenderer.invoke('payments:record', paymentData),
     getAllPayments: (filters) => ipcRenderer.invoke('payments:get-all', filters),
     calculateArrears: (installmentId, dailyArrearsRate) => ipcRenderer.invoke('payments:calculate-arrears', installmentId, dailyArrearsRate),
+    getLoansWithPendingInstallments: (filters) => ipcRenderer.invoke('payments:get-loans-with-pending-installments', filters),
     
     // --- Backup y Restauración ---
     backupData: () => ipcRenderer.invoke('settings:backup'),
@@ -63,5 +64,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     openFile: (filePath) => ipcRenderer.invoke('app:open-file', filePath),
     showSaveDialog: (options) => ipcRenderer.invoke('dialog:showSaveDialog', options),
     showOpenDialog: (options) => ipcRenderer.invoke('dialog:showOpenDialog', options),
+
+    // --- Date/Time Utilities ---
+    formatDate: (isoDate, format) => ipcRenderer.invoke('util:formatDate', isoDate, format),
+    formatDateTime: (isoDateTime, format) => ipcRenderer.invoke('util:formatDateTime', isoDateTime, format),
+    getCurrentDateTimeISO: () => ipcRenderer.invoke('util:getCurrentDateTimeISO'),
+    addOrSubtractDaysISO: (isoDate, days, operation) => ipcRenderer.invoke('util:addOrSubtractDaysISO', isoDate, days, operation),
 });
 console.log('Preload script for Presto Argento loaded successfully. window.electronAPI is now available.');

@@ -590,7 +590,26 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (loanDetailsModalCloseBtn_LoanModule) loanDetailsModalCloseBtn_LoanModule.addEventListener('click', closeLoanDetailsModal_LoanModule);
         if (btnCloseLoanDetailsModal_LoanModule) btnCloseLoanDetailsModal_LoanModule.addEventListener('click', closeLoanDetailsModal_LoanModule);
         if (btnLoanDetailsChangeStatus_LoanModule) { btnLoanDetailsChangeStatus_LoanModule.addEventListener('click', async () => { /* ... (código Fase 4 con showAppMessage) ... */ }); }
-        if (btnGenerateLoanContract_LoanModule) { btnGenerateLoanContract_LoanModule.addEventListener('click', async () => { /* ... (código Fase 7 con showAppMessage) ... */ }); }
+        if (btnGenerateLoanContract_LoanModule) {
+            btnGenerateLoanContract_LoanModule.addEventListener('click', async () => {
+                if (!currentViewingLoanId_LoanModule) {
+                    showAppMessage("No loan selected for contract generation.", 'error');
+                    return;
+                }
+                try {
+                    const result = await window.electronAPI.generateLoanContract(currentViewingLoanId_LoanModule);
+                    if (result.success && result.filePath) {
+                        showAppMessage(result.message || 'Contrato generado exitosamente.', 'success');
+                        await window.electronAPI.openFile(result.filePath);
+                    } else {
+                        showAppMessage(result.message || 'Error al generar el contrato.', 'error');
+                    }
+                } catch (error) {
+                    console.error("Error generando contrato:", error);
+                    showAppMessage('Error de comunicación al generar contrato.', 'error');
+                }
+            });
+        }
     }
 
     // --- SECCIÓN SIMULADOR DE PRÉSTAMOS ---
@@ -705,7 +724,65 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (paymentHistoryDateToInput_PayModule) paymentHistoryDateToInput_PayModule.value = (await window.electronAPI.getCurrentDateTimeISO()).split('T')[0];
             if (paymentHistoryDateFromInput_PayModule) paymentHistoryDateFromInput_PayModule.value = (await window.electronAPI.addOrSubtractDaysISO((await window.electronAPI.getCurrentDateTimeISO()), 30, 'minus'));
         }
-        async function searchLoansForPayment_PayModule() { /* ... (código Fase 6 con await para formatDateForDisplay) ... */ }
+        async function searchLoansForPayment_PayModule() {
+            const clientDni = paymentSearchClientDniInput_PayModule.value.trim();
+            const loanId = paymentSearchLoanIdInput_PayModule.value.trim();
+
+            pendingInstallmentsListDiv_PayModule.innerHTML = '';
+            noPendingInstallmentsMessage_PayModule.style.display = 'none';
+            noPendingInstallmentsMessage_PayModule.textContent = '';
+
+            if (!clientDni && !loanId) {
+                showAppMessage("Ingrese DNI del cliente o ID del préstamo para buscar.", 'error');
+                return;
+            }
+
+            const filters = {};
+            if (clientDni) filters.clientDni = clientDni;
+            if (loanId) filters.loanId = loanId;
+
+            try {
+                const result = await window.electronAPI.getLoansWithPendingInstallments(filters);
+
+                if (result.success && result.data) {
+                    if (result.data.length === 0) {
+                        noPendingInstallmentsMessage_PayModule.textContent = "No se encontraron cuotas pendientes para los criterios.";
+                        noPendingInstallmentsMessage_PayModule.style.display = 'block';
+                    } else {
+                        let foundInstallments = false;
+                        for (const loan of result.data) {
+                            if (loan.installments && loan.installments.length > 0) {
+                                foundInstallments = true;
+                                for (const installment of loan.installments) {
+                                    const remainingBalance = parseFloat(installment.amount_due) - parseFloat(installment.amount_paid);
+                                    const installmentItem = document.createElement('div');
+                                    installmentItem.classList.add('pending-installment-item');
+                                    installmentItem.innerHTML = `
+                                        <h4>Préstamo ID: ${loan.id} - Cliente: ${loan.client_first_name} ${loan.client_last_name}</h4>
+                                        <p>Cuota N°: ${installment.installment_number} | Vence: ${await formatDateForDisplay(installment.due_date)} | Monto: ${formatCurrency(installment.amount_due)} | Pagado: ${formatCurrency(installment.amount_paid)} | Saldo: ${formatCurrency(remainingBalance)}</p>
+                                        <button class="btn btn-sm btn-success btn-record-payment" data-installment-id="${installment.id}" data-loan-id="${loan.id}">Registrar Pago</button>
+                                    `;
+                                    pendingInstallmentsListDiv_PayModule.appendChild(installmentItem);
+                                }
+                            }
+                        }
+                        if (!foundInstallments) {
+                            noPendingInstallmentsMessage_PayModule.textContent = "No se encontraron cuotas pendientes para los criterios.";
+                            noPendingInstallmentsMessage_PayModule.style.display = 'block';
+                        }
+                    }
+                } else {
+                    noPendingInstallmentsMessage_PayModule.textContent = result.message || "Error buscando cuotas pendientes.";
+                    noPendingInstallmentsMessage_PayModule.style.display = 'block';
+                    showAppMessage(result.message || 'Error buscando cuotas pendientes.', 'error');
+                }
+            } catch (error) {
+                console.error("Error en searchLoansForPayment_PayModule:", error);
+                noPendingInstallmentsMessage_PayModule.textContent = "Error de comunicación al buscar cuotas.";
+                noPendingInstallmentsMessage_PayModule.style.display = 'block';
+                showAppMessage('Error de comunicación al buscar cuotas pendientes.', 'error');
+            }
+        }
         async function openRecordPaymentModal_PayModule(installmentId) { /* ... (código Fase 6 con await para formatDateForDisplay y usando DEFAULT_DAILY_ARREARS_RATE_PayModule) ... */ }
         function closeRecordPaymentModal_PayModule() { /* ... (código Fase 6) ... */ }
         async function loadPaymentHistory_PayModule() { /* ... (código Fase 6 con await para formatDateTimeForDisplay) ... */ }
@@ -742,7 +819,99 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         async function renderReportFilters_RepModule(type) { /* ... (código Fase 8 con await para getAllUsers) ... */ }
         async function displayReportData_RepModule(data, type) { /* ... (código Fase 8 con await para formatDateForDisplay) ... */ }
-        async function handleGenerateReport_RepModule() { /* ... (código Fase 8 con await para getAllClients) ... */ }
+        async function handleGenerateReport_RepModule() {
+            const reportType = reportTypeSelect_RepModule.value;
+            const filters = {};
+
+            // Collect filter values
+            const dateFromInput = document.getElementById('report-filter-date-from');
+            if (dateFromInput) filters.dateFrom = dateFromInput.value;
+
+            const dateToInput = document.getElementById('report-filter-date-to');
+            if (dateToInput) filters.dateTo = dateToInput.value;
+
+            const loanTypeInput = document.getElementById('report-filter-loan-type');
+            if (loanTypeInput) filters.loanType = loanTypeInput.value;
+
+            const clientIdInput = document.getElementById('report-filter-client-id');
+            if (clientIdInput) filters.clientId = clientIdInput.value;
+
+            const loanStatusInput = document.getElementById('report-filter-loan-status');
+            if (loanStatusInput) filters.loanStatus = loanStatusInput.value;
+
+            const userIdInput = document.getElementById('report-filter-user-id');
+            if (userIdInput) filters.userId = userIdInput.value;
+            
+            // Clean up empty string filters
+            for (const key in filters) {
+                if (filters[key] === "" || filters[key] === null || filters[key] === undefined) {
+                    delete filters[key];
+                }
+            }
+
+            reportStatusMessage_RepModule.textContent = 'Generando reporte...';
+            reportStatusMessage_RepModule.style.display = 'block';
+            noReportDataMessage_RepModule.style.display = 'none';
+            if(reportDataTableBody_RepModule) reportDataTableBody_RepModule.innerHTML = '';
+            if(reportSummaryOutputDiv_RepModule) reportSummaryOutputDiv_RepModule.style.display = 'none';
+            if(reportTableOutputDiv_RepModule) reportTableOutputDiv_RepModule.style.display = 'none';
+
+
+            try {
+                const result = await window.electronAPI.getReportData(reportType, filters);
+
+                if (result.success) {
+                    currentReportData_ReportModule = result.data;
+                    currentReportType_ReportModule = reportType;
+                    await displayReportData_RepModule(result.data, reportType); // Assumed to handle its own display logic
+
+                    let isEmptyData = false;
+                    if (Array.isArray(result.data) && result.data.length === 0) {
+                        isEmptyData = true;
+                    } else if (typeof result.data === 'object' && !Array.isArray(result.data) && result.data !== null) {
+                        // For summary or object-based reports, check if all relevant fields are zero/empty
+                        // This is a simplified check; specific checks might be needed based on report structure
+                        isEmptyData = Object.values(result.data).every(value => 
+                            value === 0 || value === '' || value === null || (Array.isArray(value) && value.length === 0)
+                        );
+                         if (reportType === 'summary' && result.data && Object.keys(result.data).length === 0) isEmptyData = true; // Explicitly empty object for summary
+                    } else if (result.data === null || result.data === undefined) {
+                         isEmptyData = true;
+                    }
+
+
+                    if (isEmptyData) {
+                        noReportDataMessage_RepModule.textContent = "No hay datos para el reporte seleccionado y filtros aplicados.";
+                        noReportDataMessage_RepModule.style.display = 'block';
+                        if(reportTableOutputDiv_RepModule) reportTableOutputDiv_RepModule.style.display = 'none';
+                        btnExportPdf_RepModule.disabled = true;
+                        btnExportCsv_RepModule.disabled = true;
+                    } else {
+                        noReportDataMessage_RepModule.style.display = 'none';
+                        // displayReportData_RepModule should make the table visible if data exists
+                        btnExportPdf_RepModule.disabled = false;
+                        btnExportCsv_RepModule.disabled = false;
+                    }
+                    reportStatusMessage_RepModule.textContent = '';
+                    reportStatusMessage_RepModule.style.display = 'none';
+                } else {
+                    reportStatusMessage_RepModule.textContent = result.message || 'Error generando reporte.';
+                    btnExportPdf_RepModule.disabled = true;
+                    btnExportCsv_RepModule.disabled = true;
+                    currentReportData_ReportModule = null;
+                    if(reportDataTableBody_RepModule) reportDataTableBody_RepModule.innerHTML = ''; // Clear table on error too
+                    if(reportSummaryOutputDiv_RepModule) reportSummaryOutputDiv_RepModule.innerHTML = ''; // Clear summary on error
+                }
+            } catch (error) {
+                console.error("Error generando reporte:", error);
+                reportStatusMessage_RepModule.textContent = 'Error de comunicación al generar el reporte.';
+                btnExportPdf_RepModule.disabled = true;
+                btnExportCsv_RepModule.disabled = true;
+                currentReportData_ReportModule = null;
+                if(reportDataTableBody_RepModule) reportDataTableBody_RepModule.innerHTML = '';
+                if(reportSummaryOutputDiv_RepModule) reportSummaryOutputDiv_RepModule.innerHTML = '';
+            }
+        }
 
         if (reportTypeSelect_RepModule) reportTypeSelect_RepModule.addEventListener('change', async (e) => await renderReportFilters_RepModule(e.target.value));
         if (btnGenerateReport_RepModule) btnGenerateReport_RepModule.addEventListener('click', async () => await handleGenerateReport_RepModule());

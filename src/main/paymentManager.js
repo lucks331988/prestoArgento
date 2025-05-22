@@ -310,4 +310,73 @@ module.exports = {
     recordPayment,
     getAllPayments,
     calculateArrears,
+    getLoansWithPendingInstallments,
 };
+
+/**
+ * Obtiene préstamos con cuotas pendientes o parcialmente pagadas, incluyendo información del cliente.
+ * @param {object} filters - { clientId, loanId, clientDni }
+ * @returns {Promise<Array<object>>}
+ */
+async function getLoansWithPendingInstallments(filters = {}) {
+    try {
+        let loanCondition = "";
+        const params = [];
+
+        if (filters.loanId) {
+            loanCondition = "l.id = ?";
+            params.push(filters.loanId);
+        } else if (filters.clientId) {
+            loanCondition = "l.client_id = ?";
+            params.push(filters.clientId);
+        } else if (filters.clientDni) {
+            const client = await dbUtil.get('SELECT id FROM clients WHERE dni = ?', [filters.clientDni]);
+            if (client) {
+                loanCondition = "l.client_id = ?";
+                params.push(client.id);
+            } else {
+                return []; // Cliente no encontrado por DNI, no hay préstamos que mostrar
+            }
+        } else {
+            // Si no hay filtros específicos de préstamo o cliente, podríamos devolver todos los préstamos
+            // con cuotas pendientes, o requerir un filtro. Por ahora, devolvemos vacío si no hay filtro.
+            // Opcionalmente, se podría modificar para buscar todos si no hay filtro específico.
+            // Para este caso, la lógica del renderer implica que se buscará por DNI o LoanID.
+            return []; 
+        }
+
+        const loans = await dbUtil.all(
+            `SELECT l.id, l.client_id, l.status as loan_status,
+                    c.first_name as client_first_name, c.last_name as client_last_name, c.dni as client_dni
+             FROM loans l
+             JOIN clients c ON l.client_id = c.id
+             WHERE ${loanCondition} AND (l.status = 'active' OR l.status = 'overdue' OR l.status = 'defaulted')`,
+            params
+        );
+
+        if (!loans || loans.length === 0) {
+            return [];
+        }
+
+        const resultLoans = [];
+        for (const loan of loans) {
+            const installments = await dbUtil.all(
+                `SELECT * FROM loan_installments 
+                 WHERE loan_id = ? AND (status = 'pending' OR status = 'partially_paid' OR status = 'overdue' OR status = 'defaulted')
+                 ORDER BY installment_number ASC`,
+                [loan.id]
+            );
+
+            if (installments && installments.length > 0) {
+                resultLoans.push({
+                    ...loan,
+                    installments: installments
+                });
+            }
+        }
+        return resultLoans;
+    } catch (error) {
+        console.error('Error en getLoansWithPendingInstallments:', error);
+        throw error; // Re-lanzar para que el manejador IPC lo capture
+    }
+}
