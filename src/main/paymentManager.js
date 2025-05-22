@@ -28,52 +28,87 @@ const fonts = {
 };
 const printer = new PdfPrinter(fonts);
 
+// Helper function to format currency
+function formatCurrency(amount) {
+    if (typeof amount !== 'number') {
+        amount = parseFloat(amount);
+    }
+    if (isNaN(amount)) {
+        return 'N/A'; // Or some other placeholder
+    }
+    return amount.toLocaleString('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
 
 /**
  * Genera un recibo de pago en PDF.
- * @param {object} paymentDetails - { payment_id, loan_id, client_name, client_dni, installment_number, payment_amount, payment_date_iso, notes }
- * @param {object} companyInfo - { name, address, phone, cuit }
+ * @param {object} receiptData - Data for the receipt.
+ * @param {object} companyInfo - { name, address, phone, cuit, email (optional) }
  * @returns {Promise<string|null>} - Ruta al archivo PDF generado o null en caso de error.
  */
-async function generatePaymentReceipt(paymentDetails, companyInfo) {
-    const loanReceiptDir = path.join(receiptsBasePath, `loan_${paymentDetails.loan_id}`);
+async function generatePaymentReceipt(receiptData, companyInfo) {
+    const loanReceiptDir = path.join(receiptsBasePath, `loan_${receiptData.loan_id}`);
     if (!fs.existsSync(loanReceiptDir)) {
         fs.mkdirSync(loanReceiptDir, { recursive: true });
     }
-    const receiptFileName = `recibo_pago_${paymentDetails.payment_id}_${Date.now()}.pdf`;
+    const receiptFileName = `recibo_pago_${receiptData.payment_id}_${Date.now()}.pdf`;
     const receiptPath = path.join(loanReceiptDir, receiptFileName);
-
-    const paymentDateFormatted = DateTime.fromISO(paymentDetails.payment_date_iso).toFormat("dd/MM/yyyy HH:mm:ss");
-    const emissionDateFormatted = DateTime.now().toFormat("dd/MM/yyyy HH:mm:ss");
 
     const docDefinition = {
         content: [
-            { text: companyInfo.name || 'PRESTO ARGENTO', style: 'header', alignment: 'center' },
-            { text: `Dirección: ${companyInfo.address || 'N/A'} - Tel: ${companyInfo.phone || 'N/A'} - CUIT: ${companyInfo.cuit || 'N/A'}`, style: 'subheader', alignment: 'center', margin: [0,0,0,10] },
-            { text: 'COMPROBANTE DE PAGO', style: 'title', alignment: 'center', margin: [0, 0, 0, 20] },
-            { text: `Recibo N°: P-${paymentDetails.payment_id}`, alignment: 'right' },
-            { text: `Fecha de Emisión: ${emissionDateFormatted}`, alignment: 'right', margin: [0,0,0,15] },
+            { text: '📄 Comprobante de Pago de Cuota de Préstamo', style: 'mainTitle', alignment: 'center', margin: [0, 0, 0, 20] },
 
-            { text: 'Datos del Cliente:', style: 'sectionHeader' },
-            { text: `Nombre: ${paymentDetails.client_name}` },
-            { text: `DNI: ${paymentDetails.client_dni}`, margin: [0,0,0,10] },
+            { text: `Nombre del Cliente: ${receiptData.client_name}` },
+            { text: `DNI: ${receiptData.client_dni}` },
+            { text: `Número de Préstamo: PR-${receiptData.loan_id}` },
+            { text: `Fecha del Pago: ${DateTime.fromISO(receiptData.payment_date_iso).toFormat("dd/MM/yyyy")}` },
+            { text: `Hora del Pago: ${DateTime.fromISO(receiptData.payment_date_iso).toFormat("hh:mm a")}` },
 
-            { text: 'Detalle del Préstamo y Pago:', style: 'sectionHeader' },
-            { text: `Préstamo N°: ${paymentDetails.loan_id}` },
-            { text: `Cuota N°: ${paymentDetails.installment_number}` },
-            { text: `Fecha de Pago Efectuado: ${paymentDateFormatted}` },
-            { text: `Monto Pagado: ${paymentDetails.payment_amount.toLocaleString('es-AR', { style: 'currency', currency: 'ARS' })}`, style: 'amountPaid', margin: [0,5,0,10] },
-            ...(paymentDetails.notes ? [{text: `Notas del Pago: ${paymentDetails.notes}`, margin: [0,0,0,10]}] : []),
-            
-            { text: '_________________________', alignment: 'center', margin: [0, 40, 0, 0] },
-            { text: 'Firma y Aclaración (Prestamista)', alignment: 'center' },
+            { text: '---', style: 'separator', margin: [0, 10, 0, 10] },
+
+            { text: '💰 Detalle del Pago:', style: 'sectionTitle', margin: [0, 0, 0, 5] },
+            {
+                ul: [
+                    `Monto Total del Préstamo: ${formatCurrency(receiptData.loan_principal_amount)}`,
+                    `Cuotas Totales: ${receiptData.loan_number_of_installments}`,
+                    `Cuota N.º: ${receiptData.installment_number} de ${receiptData.loan_number_of_installments}`,
+                    `Monto de la Cuota: ${formatCurrency(receiptData.installment_amount_due)}`,
+                    `Intereses incluidos: Sí`, // Assuming 'Sí' for now
+                    `Fecha de Vencimiento de la Cuota: ${DateTime.fromISO(receiptData.installment_due_date).toFormat("dd/MM/yyyy")}`,
+                    `Fecha de Pago: ${DateTime.fromISO(receiptData.payment_date_iso).toFormat("dd/MM/yyyy")}`,
+                    `Recargo por atraso: ${formatCurrency(receiptData.arrears_amount || 0)}`,
+                    `Monto Total Pagado: ${formatCurrency(receiptData.total_amount_paid_for_transaction)}`,
+                ],
+                margin: [0, 0, 0, 10]
+            },
+
+            { text: '---', style: 'separator', margin: [0, 10, 0, 10] },
+
+            { text: '💼 Información del Emisor:', style: 'sectionTitle', margin: [0, 0, 0, 5] },
+            {
+                ul: [
+                    `Empresa: ${companyInfo.name || 'N/A'}`,
+                    `CUIT: ${companyInfo.cuit || 'N/A'}`,
+                    `Dirección: ${companyInfo.address || 'N/A'}`,
+                    `Teléfono: ${companyInfo.phone || 'N/A'}`,
+                    `Email: ${companyInfo.email || 'N/A'}`,
+                ],
+                margin: [0, 0, 0, 10]
+            },
+
+            { text: '---', style: 'separator', margin: [0, 10, 0, 10] },
+
+            `Método de Pago: ${receiptData.payment_method || 'N/A'}`,
+            `Operador: ${receiptData.operator_username || 'N/A'}`,
+            // Notes are now part of the main content flow as per the new structure
+             ...(receiptData.notes ? [{text: `\nNotas Adicionales: ${receiptData.notes}`}] : []),
+             { text: '\n\n\n_________________________', alignment: 'center', margin: [0, 40, 0, 0] },
+             { text: 'Firma y Aclaración (Prestamista)', alignment: 'center' },
         ],
         styles: {
-            header: { fontSize: 18, bold: true },
-            subheader: { fontSize: 9, italics: true },
-            title: { fontSize: 16, bold: true },
-            sectionHeader: { fontSize: 12, bold: true, margin: [0, 10, 0, 5] },
-            amountPaid: { fontSize: 14, bold: true }
+            mainTitle: { fontSize: 18, bold: true },
+            separator: { fontSize: 10, bold: true, alignment: 'center' },
+            sectionTitle: { fontSize: 14, bold: true },
+            // Old styles (header, subheader, title, sectionHeader, amountPaid) are removed.
         },
         defaultStyle: { font: 'Roboto', fontSize: 10 }
     };
