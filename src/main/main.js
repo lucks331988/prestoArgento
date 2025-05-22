@@ -317,14 +317,16 @@ ipcMain.handle('get-documents-path', async () => {
 
 // Gestión de Préstamos
 ipcMain.handle('loans:calculate-details', (event, params) => {
-    let rateForCalc = params.interestRate; 
-    if (params.loanType === 'monthly') {
-        rateForCalc = params.interestRate * 12; 
-    }
+    // params.interestRate is already the effective period rate (e.g., 0.10 for 10% monthly, 0.01 for 1% daily)
+    // as it's converted in mainRenderer.js
     try {
         const details = loanManager.calculateLoanDetails(
-            params.principal, rateForCalc, params.term,
-            params.loanType, params.startDate, params.fixedInstallmentAmount
+            params.principal, 
+            params.interestRate, // Directly use the rate from params
+            params.term,
+            params.loanType, 
+            params.startDate, 
+            params.fixedInstallmentAmount
         );
         return { success: true, data: details };
     } catch (error) {
@@ -332,9 +334,17 @@ ipcMain.handle('loans:calculate-details', (event, params) => {
         return { success: false, message: error.message };
     }
 });
-ipcMain.handle('loans:register', async (event, loanData) => {
-    if (!currentUser) return { success: false, message: "No hay usuario autenticado." };
-    return await loanManager.registerLoan(loanData, currentUser.id);
+ipcMain.handle('loans:register', async (event, loanData, userId) => { // Added userId as a parameter
+    // userId is now passed from the renderer via preload
+    if (!userId) { // Basic check, could also validate against currentUser if needed but plan is to use passed userId
+        return { success: false, message: "Error: ID de usuario no proporcionado o inválido para registrar el préstamo." };
+    }
+    // It's good practice to ensure the calling user (currentUser.id) matches userId or has rights if they differ.
+    // For this specific task, we'll trust the userId passed as per the plan.
+    // if (!currentUser || currentUser.id !== userId) {
+    //     return { success: false, message: "Error de autenticación o permisos." };
+    // }
+    return await loanManager.registerLoan(loanData, userId);
 });
 ipcMain.handle('loans:get-all', async (event, filters = {}) => {
     try { return { success: true, data: await loanManager.getAllLoans(filters) }; }
@@ -363,6 +373,15 @@ ipcMain.handle('payments:get-all', async (event, filters = {}) => {
 });
 ipcMain.handle('payments:calculate-arrears', async (event, installmentId, dailyArrearsRate) => {
     return await paymentManager.calculateArrears(installmentId, dailyArrearsRate);
+});
+ipcMain.handle('payments:get-pending-installments', async (event, filters) => {
+    try {
+        const installments = await paymentManager.getPendingInstallments(filters);
+        return { success: true, data: installments };
+    } catch (error) {
+        console.error('Error en IPC payments:get-pending-installments:', error);
+        return { success: false, message: error.message, data: [] };
+    }
 });
    
 // Backup y Restauración

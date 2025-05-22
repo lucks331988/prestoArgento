@@ -310,4 +310,45 @@ module.exports = {
     recordPayment,
     getAllPayments,
     calculateArrears,
+    getPendingInstallments,
 };
+
+async function getPendingInstallments(filters = {}) {
+    try {
+        let params = [];
+        let sql = `
+            SELECT 
+                li.id, li.loan_id, li.installment_number, li.due_date, li.amount_due, 
+                li.amount_paid, li.status as installment_status, li.interest_on_arrears,
+                (li.amount_due + IFNULL(li.interest_on_arrears, 0) - IFNULL(li.amount_paid, 0)) as remaining_balance,
+                l.client_id, 
+                c.first_name as client_first_name, c.last_name as client_last_name, c.dni as client_dni
+            FROM loan_installments li
+            JOIN loans l ON li.loan_id = l.id
+            JOIN clients c ON l.client_id = c.id
+            WHERE li.status != 'paid'
+        `;
+        
+        const whereClauses = [];
+        if (filters.clientId) {
+            whereClauses.push('l.client_id = ?');
+            params.push(filters.clientId);
+        }
+        if (filters.loanId) {
+            whereClauses.push('l.id = ?'); // Filter by loan_id from the loans table
+            params.push(filters.loanId);
+        }
+
+        if (whereClauses.length > 0) {
+            sql += ' AND ' + whereClauses.join(' AND ');
+        }
+        
+        sql += ' ORDER BY c.last_name, c.first_name, l.id, li.installment_number';
+
+        const rows = await dbUtil.all(sql, params);
+        return { success: true, data: rows };
+    } catch (error) {
+        console.error('Error en getPendingInstallments:', error);
+        return { success: false, message: `Error al obtener cuotas pendientes: ${error.message}`, data: [] };
+    }
+}

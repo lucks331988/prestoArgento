@@ -163,17 +163,17 @@ async function getGeneralSummaryData(filters = {}) {
         // Préstamos Activos (capital pendiente)
         const activeLoans = await dbUtil.get(
             `SELECT COUNT(l.id) as count, SUM(l.total_amount_due - IFNULL((SELECT SUM(pay.payment_amount) FROM payments pay WHERE pay.loan_id = l.id), 0)) as total_pending_amount 
-             FROM loans l WHERE l.status = 'active' ${loanDateFilter.replace('start_date', 'created_at') /* O filtrar por fecha de inicio del préstamo */}`, loanParams);
+             FROM loans l WHERE l.status = 'active' ${loanDateFilter}`, loanParams); // Use loanDateFilter directly (applies to l.start_date)
         summary.active_loans_count = activeLoans.count || 0;
         summary.active_loans_total_pending_amount = activeLoans.total_pending_amount || 0;
 
-        // Préstamos Pagados
-        const paidLoans = await dbUtil.get(`SELECT COUNT(*) as count, SUM(l.principal_amount) as total_principal FROM loans l WHERE l.status = 'paid' ${loanDateFilter.replace('start_date', 'created_at')}`, loanParams);
+        // Préstamos Pagados (filtrados por l.start_date si loanDateFilter está activo)
+        const paidLoans = await dbUtil.get(`SELECT COUNT(*) as count, SUM(l.principal_amount) as total_principal FROM loans l WHERE l.status = 'paid' ${loanDateFilter}`, loanParams);
         summary.paid_loans_count = paidLoans.count || 0;
         summary.paid_loans_total_principal = paidLoans.total_principal || 0;
         
-        // Préstamos Vencidos/En Mora (considerar 'overdue' y 'defaulted')
-        const overdueLoans = await dbUtil.get(`SELECT COUNT(*) as count, SUM(l.principal_amount) as total_principal FROM loans l WHERE (l.status = 'overdue' OR l.status = 'defaulted') ${loanDateFilter.replace('start_date', 'created_at')}`, loanParams);
+        // Préstamos Vencidos/En Mora (filtrados por l.start_date si loanDateFilter está activo)
+        const overdueLoans = await dbUtil.get(`SELECT COUNT(*) as count, SUM(l.principal_amount) as total_principal FROM loans l WHERE (l.status = 'overdue' OR l.status = 'defaulted') ${loanDateFilter}`, loanParams);
         summary.overdue_loans_count = overdueLoans.count || 0;
         summary.overdue_loans_total_principal = overdueLoans.total_principal || 0;
 

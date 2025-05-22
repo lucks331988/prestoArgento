@@ -40,7 +40,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     // --- Gestión de Préstamos ---
     calculateLoanDetails: (params) => ipcRenderer.invoke('loans:calculate-details', params),
-    registerLoan: (loanData) => ipcRenderer.invoke('loans:register', loanData),
+    registerLoan: (loanData, userId) => ipcRenderer.invoke('loans:register', loanData, userId),
     getAllLoans: (filters) => ipcRenderer.invoke('loans:get-all', filters),
     getLoanById: (loanId) => ipcRenderer.invoke('loans:get-by-id', loanId),
     updateLoanStatus: (loanId, newStatus) => ipcRenderer.invoke('loans:update-status', loanId, newStatus),
@@ -50,6 +50,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     recordPayment: (paymentData) => ipcRenderer.invoke('payments:record', paymentData),
     getAllPayments: (filters) => ipcRenderer.invoke('payments:get-all', filters),
     calculateArrears: (installmentId, dailyArrearsRate) => ipcRenderer.invoke('payments:calculate-arrears', installmentId, dailyArrearsRate),
+    getPendingInstallments: (filters) => ipcRenderer.invoke('payments:get-pending-installments', filters),
     
     // --- Backup y Restauración ---
     backupData: () => ipcRenderer.invoke('settings:backup'),
