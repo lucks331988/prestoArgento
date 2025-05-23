@@ -50,6 +50,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     recordPayment: (paymentData) => ipcRenderer.invoke('payments:record', paymentData),
     getAllPayments: (filters) => ipcRenderer.invoke('payments:get-all', filters),
     calculateArrears: (installmentId, dailyArrearsRate) => ipcRenderer.invoke('payments:calculate-arrears', installmentId, dailyArrearsRate),
+    searchInstallmentsForPayment: (criteria) => ipcRenderer.invoke('search-installments-for-payment', criteria),
     
     // --- Backup y Restauración ---
     backupData: () => ipcRenderer.invoke('settings:backup'),
@@ -58,6 +59,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // --- Reportes ---
     getReportData: (reportType, filters) => ipcRenderer.invoke('reports:get-data', reportType, filters),
     exportReport: (reportType, data, format) => ipcRenderer.invoke('reports:export', reportType, data, format),
+
+    // --- Funciones de Fecha y Hora (Luxon) ---
+    formatDate: (dateString, format) => ipcRenderer.invoke('format-date', dateString, format),
+    formatDateTime: (dateTimeString, format) => ipcRenderer.invoke('format-date-time', dateTimeString, format),
+    getCurrentDateTimeISO: () => ipcRenderer.invoke('get-current-date-time-iso'),
+    addOrSubtractDaysISO: (isoDateString, days, operation) => ipcRenderer.invoke('add-or-subtract-days-iso', isoDateString, days, operation),
     
     // --- Utilidades Generales de la App ---
     openFile: (filePath) => ipcRenderer.invoke('app:open-file', filePath),

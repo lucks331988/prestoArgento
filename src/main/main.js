@@ -12,6 +12,7 @@ const loanManager = require('./loanManager');
 const paymentManager = require('./paymentManager');
 const settingsManager = require('./settingsManager');
 const reportManager = require('./reportManager');
+const { DateTime } = require('luxon');
 
 
 // Variables Globales
@@ -364,6 +365,71 @@ ipcMain.handle('payments:get-all', async (event, filters = {}) => {
 ipcMain.handle('payments:calculate-arrears', async (event, installmentId, dailyArrearsRate) => {
     return await paymentManager.calculateArrears(installmentId, dailyArrearsRate);
 });
+
+ipcMain.handle('search-installments-for-payment', async (event, criteria) => {
+    try {
+        const { dni, loanId } = criteria;
+        let loansToProcess = [];
+        let clientInfo = null;
+
+        if (loanId) {
+            const loan = await loanManager.getLoanById(loanId);
+            if (loan && (loan.status === 'active' || loan.status === 'overdue')) {
+                loansToProcess.push(loan);
+                clientInfo = { id: loan.client_id, first_name: loan.client_first_name, last_name: loan.client_last_name, dni: loan.client_dni };
+            }
+        } else if (dni) {
+            clientInfo = await clientManager.getClientByDNI(dni);
+            if (clientInfo) {
+                const clientLoans = await loanManager.getAllLoans({ clientId: clientInfo.id });
+                // Filter for active or overdue loans
+                loansToProcess = clientLoans.filter(l => l.status === 'active' || l.status === 'overdue');
+            } else {
+                return { success: true, data: [], message: 'Cliente no encontrado o inactivo.' };
+            }
+        } else {
+            return { success: false, message: 'Se requiere DNI o ID de préstamo.' };
+        }
+
+        if (!loansToProcess.length && clientInfo) {
+             return { success: true, data: [], message: `No hay préstamos activos o vencidos para ${clientInfo.first_name} ${clientInfo.last_name} (DNI: ${clientInfo.dni}).` };
+        }
+        if (!loansToProcess.length && loanId) {
+             return { success: true, data: [], message: `Préstamo ID ${loanId} no encontrado o no está activo/vencido.` };
+        }
+
+
+        let pendingInstallments = [];
+        for (const loan of loansToProcess) {
+            // If getAllLoans doesn't return full installment details with loan, fetch them if needed
+            // Assuming getLoanById populates loan.installments correctly
+            const detailedLoan = await loanManager.getLoanById(loan.id); // Ensures we have installments
+            if (detailedLoan && detailedLoan.installments) {
+                detailedLoan.installments.forEach(inst => {
+                    if (inst.status !== 'paid') { // We want pending, partially_paid, overdue
+                        pendingInstallments.push({
+                            loan_id: detailedLoan.id,
+                            client_id: detailedLoan.client_id,
+                            client_name: `${detailedLoan.client_first_name} ${detailedLoan.client_last_name}`,
+                            client_dni: detailedLoan.client_dni,
+                            installment_id: inst.id,
+                            installment_number: inst.installment_number,
+                            due_date: inst.due_date,
+                            amount_due: inst.amount_due,
+                            amount_paid: inst.amount_paid || 0,
+                            interest_on_arrears: inst.interest_on_arrears || 0,
+                            status: inst.status
+                        });
+                    }
+                });
+            }
+        }
+        return { success: true, data: pendingInstallments };
+    } catch (error) {
+        console.error('Error en search-installments-for-payment:', error);
+        return { success: false, message: `Error interno: ${error.message}` };
+    }
+});
    
 // Backup y Restauración
 ipcMain.handle('settings:backup', async (event) => {
@@ -388,6 +454,46 @@ ipcMain.handle('reports:get-data', async (event, reportType, filters) => {
 });
 ipcMain.handle('reports:export', async (event, reportType, data, format) => {
     return await reportManager.exportReport(reportType, data, format, BrowserWindow.fromWebContents(event.sender));
+});
+
+// --- Manejadores IPC para Fechas (Luxon) ---
+ipcMain.handle('format-date', (event, dateString, format = 'dd/MM/yyyy') => {
+    try {
+        if (!dateString) return null;
+        return DateTime.fromISO(dateString).toFormat(format);
+    } catch (error) {
+        console.error('Error formatting date:', error);
+        return dateString; // Return original string on error
+    }
+});
+
+ipcMain.handle('format-date-time', (event, dateTimeString, format = 'dd/MM/yyyy HH:mm:ss') => {
+    try {
+        if (!dateTimeString) return null;
+        return DateTime.fromISO(dateTimeString).toFormat(format);
+    } catch (error) {
+        console.error('Error formatting date-time:', error);
+        return dateTimeString; // Return original string on error
+    }
+});
+
+ipcMain.handle('get-current-date-time-iso', () => {
+    return DateTime.now().toISO();
+});
+
+ipcMain.handle('add-or-subtract-days-iso', (event, isoDateString, days, operation = 'add') => {
+    try {
+        let dt = DateTime.fromISO(isoDateString);
+        if (operation === 'add') {
+            dt = dt.plus({ days: days });
+        } else if (operation === 'minus') {
+            dt = dt.minus({ days: days });
+        }
+        return dt.toISODate();
+    } catch (error) {
+        console.error('Error in add-or-subtract-days-iso:', error);
+        return null;
+    }
 });
 
 // --- MANEJADORES IPC PARA CONTROLES DE VENTANA PERSONALIZADOS ---

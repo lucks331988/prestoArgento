@@ -590,7 +590,34 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (loanDetailsModalCloseBtn_LoanModule) loanDetailsModalCloseBtn_LoanModule.addEventListener('click', closeLoanDetailsModal_LoanModule);
         if (btnCloseLoanDetailsModal_LoanModule) btnCloseLoanDetailsModal_LoanModule.addEventListener('click', closeLoanDetailsModal_LoanModule);
         if (btnLoanDetailsChangeStatus_LoanModule) { btnLoanDetailsChangeStatus_LoanModule.addEventListener('click', async () => { /* ... (código Fase 4 con showAppMessage) ... */ }); }
-        if (btnGenerateLoanContract_LoanModule) { btnGenerateLoanContract_LoanModule.addEventListener('click', async () => { /* ... (código Fase 7 con showAppMessage) ... */ }); }
+        if (btnGenerateLoanContract_LoanModule) {
+            btnGenerateLoanContract_LoanModule.addEventListener('click', async () => {
+                if (!currentViewingLoanId_LoanModule) {
+                    showAppMessage('No hay un préstamo seleccionado para generar el contrato.', 'warning');
+                    return;
+                }
+                showAppMessage('Generando contrato, por favor espere...', 'info');
+                try {
+                    const result = await window.electronAPI.generateLoanContract(currentViewingLoanId_LoanModule);
+                    if (result.success && result.filePath) {
+                        const message = `Contrato generado exitosamente en: ${result.filePath}. ¿Desea abrir el archivo?`;
+                        if (confirm(message)) { // Using confirm to ask user if they want to open
+                            const openResult = await window.electronAPI.openFile(result.filePath);
+                            if (!openResult.success) {
+                                showAppMessage(`No se pudo abrir el archivo automáticamente. Puede encontrarlo en: ${result.filePath}`, 'warning');
+                            }
+                        } else {
+                             showAppMessage(`Contrato generado. Puede encontrarlo en: ${result.filePath}`, 'success');
+                        }
+                    } else {
+                        showAppMessage(result.message || 'Error al generar el contrato PDF.', 'error');
+                    }
+                } catch (error) {
+                    console.error('Error generando contrato:', error);
+                    showAppMessage(`Error de comunicación al generar contrato: ${error.message}`, 'error');
+                }
+            });
+        }
     }
 
     // --- SECCIÓN SIMULADOR DE PRÉSTAMOS ---
@@ -705,13 +732,83 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (paymentHistoryDateToInput_PayModule) paymentHistoryDateToInput_PayModule.value = (await window.electronAPI.getCurrentDateTimeISO()).split('T')[0];
             if (paymentHistoryDateFromInput_PayModule) paymentHistoryDateFromInput_PayModule.value = (await window.electronAPI.addOrSubtractDaysISO((await window.electronAPI.getCurrentDateTimeISO()), 30, 'minus'));
         }
-        async function searchLoansForPayment_PayModule() { /* ... (código Fase 6 con await para formatDateForDisplay) ... */ }
+        async function searchLoansForPayment_PayModule() {
+            const dni = paymentSearchClientDniInput_PayModule.value.trim();
+            const loanId = paymentSearchLoanIdInput_PayModule.value.trim();
+            pendingInstallmentsListDiv_PayModule.innerHTML = ''; // Clear previous results
+            noPendingInstallmentsMessage_PayModule.style.display = 'none';
+
+            if (!dni && !loanId) {
+                noPendingInstallmentsMessage_PayModule.textContent = 'Ingrese DNI o ID de Préstamo para buscar.';
+                noPendingInstallmentsMessage_PayModule.style.display = 'block';
+                return;
+            }
+
+            const criteria = {};
+            if (loanId) {
+                criteria.loanId = loanId;
+            } else if (dni) {
+                criteria.dni = dni;
+            }
+
+            try {
+                // Show a loading message
+                pendingInstallmentsListDiv_PayModule.innerHTML = '<p>Buscando cuotas pendientes...</p>';
+                const result = await window.electronAPI.searchInstallmentsForPayment(criteria);
+
+                if (result.success && result.data && result.data.length > 0) {
+                    pendingInstallmentsListDiv_PayModule.innerHTML = ''; // Clear loading message
+                    result.data.forEach(async inst => { // Make anonymous function async for await
+                        const itemDiv = document.createElement('div');
+                        itemDiv.classList.add('pending-installment-item');
+                        
+                        const amountDue = parseFloat(inst.amount_due);
+                        const amountPaid = parseFloat(inst.amount_paid || 0);
+                        const interestOnArrears = parseFloat(inst.interest_on_arrears || 0);
+                        const remainingBalance = (amountDue + interestOnArrears - amountPaid);
+
+                        // Use await for formatDateForDisplay
+                        const formattedDueDate = await formatDateForDisplay(inst.due_date);
+
+                        itemDiv.innerHTML = `
+                            <h4>Préstamo #${inst.loan_id} - Cliente: ${inst.client_name} (DNI: ${inst.client_dni})</h4>
+                            <p>Cuota N°: <strong>${inst.installment_number}</strong></p>
+                            <p>Vencimiento: <strong>${formattedDueDate}</strong></p>
+                            <p>Monto Original: ${formatCurrency(amountDue)}</p>
+                            <p>Pagado: ${formatCurrency(amountPaid)}</p>
+                            <p>Mora Acumulada: ${formatCurrency(interestOnArrears)}</p>
+                            <p><strong>Saldo Pendiente: ${formatCurrency(remainingBalance)}</strong></p>
+                            <p>Estado Cuota: <span class="status-${inst.status}">${translateInstallmentStatus(inst.status)}</span></p>
+                            <button class="btn btn-sm btn-success btn-record-payment-from-list" data-installment-id="${inst.installment_id}">Registrar Pago</button>
+                        `;
+                        pendingInstallmentsListDiv_PayModule.appendChild(itemDiv);
+                    });
+                } else {
+                    noPendingInstallmentsMessage_PayModule.textContent = result.message || 'No se encontraron cuotas pendientes para los criterios ingresados.';
+                    noPendingInstallmentsMessage_PayModule.style.display = 'block';
+                    pendingInstallmentsListDiv_PayModule.innerHTML = ''; // Clear loading message if any
+                }
+            } catch (error) {
+                console.error('Error buscando cuotas para pago:', error);
+                noPendingInstallmentsMessage_PayModule.textContent = 'Error de comunicación al buscar cuotas.';
+                noPendingInstallmentsMessage_PayModule.style.display = 'block';
+                pendingInstallmentsListDiv_PayModule.innerHTML = ''; // Clear loading message
+            }
+        }
         async function openRecordPaymentModal_PayModule(installmentId) { /* ... (código Fase 6 con await para formatDateForDisplay y usando DEFAULT_DAILY_ARREARS_RATE_PayModule) ... */ }
         function closeRecordPaymentModal_PayModule() { /* ... (código Fase 6) ... */ }
         async function loadPaymentHistory_PayModule() { /* ... (código Fase 6 con await para formatDateTimeForDisplay) ... */ }
 
         if (btnPaymentSearchLoans_PayModule) btnPaymentSearchLoans_PayModule.addEventListener('click', async () => await searchLoansForPayment_PayModule());
-        if (pendingInstallmentsListDiv_PayModule) { pendingInstallmentsListDiv_PayModule.addEventListener('click', async (e) => { /* ... (código Fase 6) ... */ }); }
+        if (pendingInstallmentsListDiv_PayModule) {
+            pendingInstallmentsListDiv_PayModule.addEventListener('click', async (e) => {
+                const target = e.target.closest('.btn-record-payment-from-list');
+                if (target && target.dataset.installmentId) {
+                    const installmentId = target.dataset.installmentId;
+                    await openRecordPaymentModal_PayModule(installmentId); // Assuming openRecordPaymentModal_PayModule is defined and handles being async
+                }
+            });
+        }
         if (recordPaymentModalCloseBtn_PayModule) recordPaymentModalCloseBtn_PayModule.addEventListener('click', closeRecordPaymentModal_PayModule);
         if (btnCancelRecordPayment_PayModule) btnCancelRecordPayment_PayModule.addEventListener('click', closeRecordPaymentModal_PayModule);
         if (recordPaymentForm_PayModule) { recordPaymentForm_PayModule.addEventListener('submit', async (e) => { /* ... (código Fase 6 con showAppMessage) ... */ }); }

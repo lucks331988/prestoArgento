@@ -59,6 +59,22 @@ async function addClient(clientData) {
 }
 
 /**
+ * Obtiene un cliente por su DNI.
+ * @param {string} dni
+ * @returns {Promise<object|null>} - Datos del cliente o null si no se encuentra.
+ */
+async function getClientByDNI(dni) {
+    try {
+        const client = await dbUtil.get('SELECT * FROM clients WHERE dni = ? AND is_active = 1', [dni]);
+        // Optionally, you might want to include documents or other details similar to getClientById
+        return client;
+    } catch (error) {
+        console.error('Error en getClientByDNI:', error);
+        throw error;
+    }
+}
+
+/**
  * Obtiene todos los clientes.
  * @param {boolean} activeOnly - Si es true, solo devuelve clientes activos. Default true.
  * @returns {Promise<Array<object>>} - Lista de clientes.
@@ -312,5 +328,6 @@ module.exports = {
     deactivateClient,
     reactivateClient,
     uploadClientDocument,
-    deleteClientDocument
+    deleteClientDocument,
+    getClientByDNI
 };
